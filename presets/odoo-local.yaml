@@ -1,0 +1,25 @@
+preset:
+  name: odoo-local
+  description: "Local Odoo JSON-2 access for lead, quote, and draft invoice demo records"
+
+network_policies:
+  odoo_local:
+    name: odoo_local
+    endpoints:
+      - host: 127.0.0.1
+        port: 8069
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: POST, path: "/json/2/**" }
+      - host: localhost
+        port: 8069
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: POST, path: "/json/2/**" }
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/python3 }

@@ -1,0 +1,27 @@
+preset:
+  name: tool-gateway-local
+  description: "Local tool gateway for audited side effects in the deal-to-delivery demo"
+
+network_policies:
+  tool_gateway_local:
+    name: tool_gateway_local
+    endpoints:
+      - host: 127.0.0.1
+        port: 8088
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/health" }
+          - allow: { method: POST, path: "/tools/**" }
+      - host: localhost
+        port: 8088
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/health" }
+          - allow: { method: POST, path: "/tools/**" }
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/python3 }
