@@ -11,6 +11,9 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
 ]
 
+[project.scripts]
+deal-agent-demo = "deal_agent.demo_cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

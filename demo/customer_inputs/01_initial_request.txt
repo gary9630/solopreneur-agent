@@ -1,0 +1,3 @@
+ACME needs a two-week Odoo automation prototype for its sales operations team.
+They want the agent to capture the customer brief, draft a quote, create delivery
+tracking in Linear and GitHub, and notify the founder in Telegram.

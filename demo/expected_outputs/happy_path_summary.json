@@ -1,0 +1,1 @@
+{"customer_name":"ACME","external_ref_count":9,"quote":{"currency":"USD","total":"4500"},"run_id":"demo_86851fe129f4","state":"COMPLETED","step_count":10,"systems":["github","linear","odoo","telegram"]}
