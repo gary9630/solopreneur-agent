@@ -4,7 +4,7 @@ from typing import Protocol
 
 from deal_agent.connectors.base import GitHubConnector, LinearConnector, OdooConnector, TelegramConnector
 from deal_agent.models import DeliveryIssue, IntakeSummary, QuoteDraft, WorkflowRun, WorkflowState
-from deal_agent.workflow import advance
+from deal_agent.workflow import advance, record_step
 
 
 class ModelServices(Protocol):
@@ -84,6 +84,11 @@ class DealWorkflowRunner:
 
         issues = self.models.break_down_issues(summary)
         run.delivery_issues = issues
+        run = record_step(
+            run,
+            "issue_breakdown",
+            {"issue_count": len(issues)},
+        )
         linear_refs = self.linear.bootstrap_project(run.run_id, summary, issues)
         run.external_refs = [*run.external_refs, *linear_refs]
         run = advance(

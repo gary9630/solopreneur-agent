@@ -89,6 +89,23 @@ def advance(
     return updated
 
 
+def record_step(run: WorkflowRun, step_name: str, metadata: dict[str, Any]) -> WorkflowRun:
+    now = datetime.now(UTC)
+    step = WorkflowStep(
+        step_name=step_name,
+        state_before=run.state,
+        state_after=run.state,
+        started_at=now,
+        completed_at=now,
+        metadata=deepcopy(metadata),
+    )
+
+    updated = run.model_copy(deep=True)
+    updated.steps.append(step)
+    updated.updated_at = now
+    return updated
+
+
 def resume_retryable(
     run: WorkflowRun,
     step_name: str = "retry_resume",

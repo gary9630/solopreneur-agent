@@ -153,3 +153,27 @@ def test_advance_refreshes_updated_at():
     updated = advance(run, WorkflowState.INTAKE_SUMMARIZED, "intake", {})
 
     assert updated.updated_at > run.updated_at
+
+
+def test_record_step_appends_audit_step_without_changing_state_or_input_run():
+    run = WorkflowRun.from_brief("run_1", "brief")
+    for next_state, step_name in [
+        (WorkflowState.INTAKE_SUMMARIZED, "intake"),
+        (WorkflowState.ODOO_LEAD_CREATED, "odoo_lead"),
+        (WorkflowState.QUOTE_DRAFTED, "quote"),
+        (WorkflowState.ODOO_QUOTATION_CREATED, "odoo_quotation"),
+    ]:
+        run = advance(run, next_state, step_name, {})
+    original_updated_at = run.updated_at
+
+    updated = workflow.record_step(run, "issue_breakdown", {"issue_count": 3})
+
+    assert updated is not run
+    assert updated.state is WorkflowState.ODOO_QUOTATION_CREATED
+    assert run.steps[-1].step_name == "odoo_quotation"
+    assert len(updated.steps) == len(run.steps) + 1
+    assert updated.steps[-1].step_name == "issue_breakdown"
+    assert updated.steps[-1].state_before is WorkflowState.ODOO_QUOTATION_CREATED
+    assert updated.steps[-1].state_after is WorkflowState.ODOO_QUOTATION_CREATED
+    assert updated.steps[-1].metadata == {"issue_count": 3}
+    assert updated.updated_at > original_updated_at

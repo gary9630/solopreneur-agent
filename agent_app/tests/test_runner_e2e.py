@@ -26,6 +26,7 @@ def test_runner_completes_happy_path_with_fakes():
         "odoo_lead",
         "quote",
         "odoo_quotation",
+        "issue_breakdown",
         "linear",
         "github",
         "invoice",
