@@ -1,9 +1,24 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from typing import Any
 
 import httpx
+
+RETRYABLE_STATUS_CODES = frozenset({408, 409, 425, 429})
+
+
+class NimClientError(Exception):
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+class NimClientResponseError(NimClientError):
+    def __init__(self, message: str, *, status_code: int, retryable: bool) -> None:
+        super().__init__(message, retryable=retryable)
+        self.status_code = status_code
 
 
 class NimChatClient:
@@ -28,33 +43,61 @@ class NimChatClient:
         return f"NimChatClient(model={self.model!r}, base_url={self.base_url!r})"
 
     def chat_json(self, system_prompt: str, user_prompt: str) -> Any:
-        response = self._http_client.post(
-            f"{self.base_url}/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0,
-            },
-        )
-        response.raise_for_status()
-
-        payload = response.json()
         try:
-            content = payload["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ValueError("NIM response did not include chat content") from exc
+            response = self._http_client.post(
+                f"{self.base_url}/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0,
+                },
+            )
+        except httpx.RequestError as exc:
+            raise NimClientError("NIM request failed before receiving a response", retryable=True) from exc
 
+        if response.status_code >= 400:
+            raise NimClientResponseError(
+                "NIM request failed",
+                status_code=response.status_code,
+                retryable=_is_retryable_status(response.status_code),
+            )
+
+        try:
+            payload = response.json()
+        except JSONDecodeError as exc:
+            raise _malformed_response(response.status_code, "NIM response body was not valid JSON") from exc
+
+        content = _extract_chat_content(payload, response.status_code)
         try:
             return json.loads(_strip_markdown_json_fence(content))
-        except json.JSONDecodeError as exc:
-            raise ValueError("NIM response content was not valid JSON") from exc
+        except JSONDecodeError as exc:
+            raise _malformed_response(response.status_code, "NIM response content was not valid JSON") from exc
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code in RETRYABLE_STATUS_CODES or status_code >= 500
+
+
+def _malformed_response(status_code: int, message: str) -> NimClientResponseError:
+    return NimClientResponseError(message, status_code=status_code, retryable=False)
+
+
+def _extract_chat_content(payload: Any, status_code: int) -> str:
+    try:
+        content = payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise _malformed_response(status_code, "NIM response did not include chat content") from exc
+
+    if not isinstance(content, str):
+        raise _malformed_response(status_code, "NIM response chat content was not a string")
+    return content
 
 
 def _strip_markdown_json_fence(content: str) -> str:

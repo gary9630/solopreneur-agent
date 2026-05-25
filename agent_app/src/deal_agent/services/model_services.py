@@ -5,6 +5,9 @@ from decimal import Decimal
 
 from deal_agent.models import DeliveryIssue, IntakeSummary, QuoteDraft, QuoteLineItem, WorkflowRun
 
+COMMON_ACRONYMS = frozenset({"AI", "API", "CLI", "CRM", "ERP", "MVP", "NIM", "POC", "UI", "UX"})
+CUSTOMER_PATTERN = r"(?P<customer>[A-Z][A-Z0-9&.-]{1,})"
+
 
 class FakeModelServices:
     def extract_intake(self, message: str) -> IntakeSummary:
@@ -96,10 +99,20 @@ class FakeModelServices:
 
 
 def _extract_customer_name(message: str) -> str | None:
-    match = re.search(r"\b([A-Z][A-Z0-9&.-]{1,})\b", message)
-    if match is None:
-        return None
-    return match.group(1)
+    preferred_patterns = [
+        rf"\bfor\s+{CUSTOMER_PATTERN}\b",
+        rf"\b(?:at|from|with)\s+{CUSTOMER_PATTERN}\b",
+        rf"\b{CUSTOMER_PATTERN}\s+(?:needs|wants|requires|asked|is|has)\b",
+    ]
+    for pattern in preferred_patterns:
+        match = re.search(pattern, message)
+        if match is not None:
+            return match.group("customer")
+
+    for candidate in re.findall(r"\b[A-Z][A-Z0-9&.-]{1,}\b", message):
+        if candidate not in COMMON_ACRONYMS:
+            return candidate
+    return None
 
 
 def _customer_from_run(run: WorkflowRun) -> str:

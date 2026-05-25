@@ -3,6 +3,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
+import deal_agent.nim_client as nim_client
 from deal_agent.models import ExternalRef, WorkflowRun
 from deal_agent.nim_client import NimChatClient
 from deal_agent.services.model_services import FakeModelServices
@@ -16,6 +17,14 @@ def test_fake_model_services_extracts_intake():
     assert summary.customer_name == "ACME"
     assert summary.scope_items
     assert summary.risks == []
+
+
+def test_fake_model_services_extracts_customer_from_for_pattern_before_acronym_fallback():
+    services = FakeModelServices()
+
+    summary = services.extract_intake("Need an MVP for ACME with Odoo automation.")
+
+    assert summary.customer_name == "ACME"
 
 
 def test_fake_model_services_drafts_quote_with_valid_totals():
@@ -130,9 +139,21 @@ def test_nim_chat_client_parses_fenced_json_content():
     assert client.chat_json("system", "user") == {"ok": True}
 
 
-def test_nim_chat_client_does_not_expose_api_key_in_repr_or_errors():
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [
+        (400, False),
+        (408, True),
+        (409, True),
+        (425, True),
+        (429, True),
+        (500, True),
+        (503, True),
+    ],
+)
+def test_nim_chat_client_wraps_http_errors_with_retryability(status_code: int, retryable: bool):
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, json={"error": "upstream failed"})
+        return httpx.Response(status_code, json={"error": "upstream failed"})
 
     client = NimChatClient(
         api_key="test-secret",
@@ -142,7 +163,43 @@ def test_nim_chat_client_does_not_expose_api_key_in_repr_or_errors():
     )
 
     assert "test-secret" not in repr(client)
-    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+    with pytest.raises(nim_client.NimClientResponseError) as exc_info:
         client.chat_json("system", "user")
 
-    assert "test-secret" not in str(exc_info.value)
+    error = exc_info.value
+    assert error.status_code == status_code
+    assert error.retryable is retryable
+    assert "test-secret" not in str(error)
+
+
+@pytest.mark.parametrize(
+    ("response_payload", "content_type"),
+    [
+        ("not json", "text/plain"),
+        ({"choices": []}, "application/json"),
+        ({"choices": [{"message": {}}]}, "application/json"),
+        ({"choices": [{"message": {"content": None}}]}, "application/json"),
+        ({"choices": [{"message": {"content": 123}}]}, "application/json"),
+        ({"choices": [{"message": {"content": "not json"}}]}, "application/json"),
+    ],
+)
+def test_nim_chat_client_wraps_malformed_success_responses(response_payload, content_type: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if content_type == "application/json":
+            return httpx.Response(200, json=response_payload)
+        return httpx.Response(200, content=str(response_payload), headers={"Content-Type": content_type})
+
+    client = NimChatClient(
+        api_key="test-secret",
+        model="nvidia/test-model",
+        base_url="https://nim.test",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(nim_client.NimClientResponseError) as exc_info:
+        client.chat_json("system", "user")
+
+    error = exc_info.value
+    assert error.status_code == 200
+    assert error.retryable is False
+    assert "test-secret" not in str(error)
