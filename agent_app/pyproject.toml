@@ -30,3 +30,6 @@ packages = ["src/deal_agent"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "live: tests that call external services and require credentials",
+]
