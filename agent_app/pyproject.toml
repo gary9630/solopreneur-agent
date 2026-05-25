@@ -11,10 +11,17 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = [
     "pytest>=8.2.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deal_agent"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
