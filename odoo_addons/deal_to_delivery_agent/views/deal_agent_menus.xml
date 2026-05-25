@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <menuitem
+        id="menu_deal_agent_root"
+        name="Deal Agent"
+        sequence="85"
+    />
+
+    <menuitem
+        id="menu_deal_agent_contexts"
+        name="Deal Contexts"
+        parent="menu_deal_agent_root"
+        action="action_deal_agent_contexts"
+        sequence="10"
+    />
+
+    <menuitem
+        id="menu_deal_agent_audit_logs"
+        name="Audit Logs"
+        parent="menu_deal_agent_root"
+        action="action_deal_agent_audit_logs"
+        sequence="20"
+    />
+</odoo>

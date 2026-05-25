@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_deal_agent_deal_context_user,deal.agent.deal.context.user,model_deal_agent_deal_context,base.group_user,1,1,1,0
+access_deal_agent_audit_log_user,deal.agent.audit.log.user,model_deal_agent_audit_log,base.group_user,1,0,0,0
