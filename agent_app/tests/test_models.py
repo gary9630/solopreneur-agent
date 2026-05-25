@@ -50,6 +50,19 @@ def test_deal_brief_derives_stable_input_hash():
     assert same_brief.input_hash == brief.input_hash
 
 
+def test_deal_brief_input_hash_tracks_copy_update_and_mutation():
+    brief = DealBrief(customer_name="ACME Studio", message="Initial brief")
+    original_hash = brief.input_hash
+
+    updated = brief.model_copy(update={"message": "Updated brief"})
+
+    assert updated.input_hash != original_hash
+
+    brief.message = "Updated brief"
+
+    assert brief.input_hash == updated.input_hash
+
+
 def test_models_forbid_unknown_fields():
     with pytest.raises(ValidationError):
         DealBrief(message="hello", unexpected=True)
@@ -62,6 +75,37 @@ def test_workflow_run_starts_new():
     assert run.brief.message == "hello"
     assert run.state is WorkflowState.NEW
     assert run.steps == []
+
+
+def test_quote_draft_rejects_invalid_subtotal():
+    with pytest.raises(ValidationError, match="subtotal"):
+        QuoteDraft(
+            line_items=[
+                {
+                    "description": "Workflow prototype",
+                    "quantity": 2,
+                    "unit_price": 1000,
+                }
+            ],
+            subtotal=1000,
+            total=1000,
+        )
+
+
+def test_quote_draft_rejects_invalid_total():
+    with pytest.raises(ValidationError, match="total"):
+        QuoteDraft(
+            line_items=[
+                {
+                    "description": "Workflow prototype",
+                    "quantity": 2,
+                    "unit_price": 1000,
+                }
+            ],
+            subtotal=2000,
+            tax=150,
+            total=2000,
+        )
 
 
 def test_domain_models_capture_pragmatic_deal_workflow_data():
@@ -90,8 +134,9 @@ def test_domain_models_capture_pragmatic_deal_workflow_data():
     )
     ref = ExternalRef(system="linear", external_id="LIN-123", url="https://linear.app/demo/issue/LIN-123")
     step = WorkflowStep(
-        name="linear_bootstrap",
-        state=WorkflowState.LINEAR_BOOTSTRAPPED,
+        step_name="linear_bootstrap",
+        state_before=WorkflowState.ODOO_QUOTATION_CREATED,
+        state_after=WorkflowState.LINEAR_BOOTSTRAPPED,
         metadata={"issue_count": 1},
         external_refs=[ref],
     )
@@ -106,4 +151,7 @@ def test_domain_models_capture_pragmatic_deal_workflow_data():
     assert run.intake_summary.scope_items == ["Create Odoo quotation", "Bootstrap Linear delivery work"]
     assert run.quote_draft.total == 4500
     assert run.delivery_issues[0].title == "Build Telegram intake webhook"
+    assert run.steps[0].step_name == "linear_bootstrap"
+    assert run.steps[0].state_before is WorkflowState.ODOO_QUOTATION_CREATED
+    assert run.steps[0].state_after is WorkflowState.LINEAR_BOOTSTRAPPED
     assert run.steps[0].metadata == {"issue_count": 1}

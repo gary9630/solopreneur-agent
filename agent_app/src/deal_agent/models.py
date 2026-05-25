@@ -5,13 +5,13 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 class WorkflowState(str, Enum):
@@ -38,10 +38,11 @@ class DealBrief(StrictModel):
     requested_budget: Decimal | None = None
     requested_timeline: str | None = None
     tags: list[str] = Field(default_factory=list)
-    input_hash: str = ""
 
-    def model_post_init(self, __context: Any) -> None:
-        object.__setattr__(self, "input_hash", self.derive_input_hash())
+    @computed_field
+    @property
+    def input_hash(self) -> str:
+        return self.derive_input_hash()
 
     def derive_input_hash(self) -> str:
         payload = self.model_dump(
@@ -92,6 +93,21 @@ class QuoteDraft(StrictModel):
     notes: str | None = None
     valid_until: str | None = None
 
+    @model_validator(mode="after")
+    def validate_totals(self) -> Self:
+        expected_subtotal = sum(
+            (item.line_total for item in self.line_items),
+            Decimal("0"),
+        )
+        if self.subtotal != expected_subtotal:
+            raise ValueError("subtotal must equal the sum of quote line item totals")
+
+        expected_total = self.subtotal + self.tax
+        if self.total != expected_total:
+            raise ValueError("total must equal subtotal plus tax")
+
+        return self
+
 
 class DeliveryIssue(StrictModel):
     title: str
@@ -110,8 +126,9 @@ class ExternalRef(StrictModel):
 
 
 class WorkflowStep(StrictModel):
-    name: str
-    state: WorkflowState
+    step_name: str
+    state_before: WorkflowState
+    state_after: WorkflowState
     status: str = "completed"
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = Field(default_factory=lambda: datetime.now(UTC))
