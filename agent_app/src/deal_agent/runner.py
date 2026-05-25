@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import NoReturn, Protocol
 
 from deal_agent.connectors.base import GitHubConnector, LinearConnector, OdooConnector, TelegramConnector
 from deal_agent.models import DeliveryIssue, IntakeSummary, QuoteDraft, WorkflowRun, WorkflowState
@@ -19,6 +19,14 @@ class ModelServices(Protocol):
 
     def compose_notification(self, run: WorkflowRun) -> str:
         ...
+
+
+class WorkflowRunFailed(RuntimeError):
+    def __init__(self, run: WorkflowRun, original_error: Exception) -> None:
+        message = str(original_error) or original_error.__class__.__name__
+        super().__init__(message)
+        self.run = run
+        self.original_error = original_error
 
 
 class DealWorkflowRunner:
@@ -40,7 +48,10 @@ class DealWorkflowRunner:
     def run(self, run_id: str, message: str) -> WorkflowRun:
         run = WorkflowRun.from_brief(run_id, message)
 
-        summary = self.models.extract_intake(message)
+        try:
+            summary = self.models.extract_intake(message)
+        except Exception as exc:
+            self._fail_retryable(run, "intake", exc)
         run.intake_summary = summary
         run = advance(
             run,
@@ -52,7 +63,10 @@ class DealWorkflowRunner:
             },
         )
 
-        lead_ref = self.odoo.create_lead(run.run_id, run.brief, summary)
+        try:
+            lead_ref = self.odoo.create_lead(run.run_id, run.brief, summary)
+        except Exception as exc:
+            self._fail_retryable(run, "odoo_lead", exc)
         run.external_refs = [*run.external_refs, lead_ref]
         run = advance(
             run,
@@ -61,7 +75,10 @@ class DealWorkflowRunner:
             {"external_id": lead_ref.external_id},
         )
 
-        quote = self.models.draft_quote(summary)
+        try:
+            quote = self.models.draft_quote(summary)
+        except Exception as exc:
+            self._fail_retryable(run, "quote", exc)
         run.quote_draft = quote
         run = advance(
             run,
@@ -73,7 +90,10 @@ class DealWorkflowRunner:
             },
         )
 
-        quotation_ref = self.odoo.create_quotation(run.run_id, quote)
+        try:
+            quotation_ref = self.odoo.create_quotation(run.run_id, quote)
+        except Exception as exc:
+            self._fail_retryable(run, "odoo_quotation", exc)
         run.external_refs = [*run.external_refs, quotation_ref]
         run = advance(
             run,
@@ -82,14 +102,20 @@ class DealWorkflowRunner:
             {"external_id": quotation_ref.external_id},
         )
 
-        issues = self.models.break_down_issues(summary)
+        try:
+            issues = self.models.break_down_issues(summary)
+        except Exception as exc:
+            self._fail_retryable(run, "issue_breakdown", exc)
         run.delivery_issues = issues
         run = record_step(
             run,
             "issue_breakdown",
             {"issue_count": len(issues)},
         )
-        linear_refs = self.linear.bootstrap_project(run.run_id, summary, issues)
+        try:
+            linear_refs = self.linear.bootstrap_project(run.run_id, summary, issues)
+        except Exception as exc:
+            self._fail_retryable(run, "linear", exc)
         run.external_refs = [*run.external_refs, *linear_refs]
         run = advance(
             run,
@@ -98,7 +124,10 @@ class DealWorkflowRunner:
             {"external_ids": [ref.external_id for ref in linear_refs]},
         )
 
-        github_ref = self.github.create_delivery_issue(run.run_id, summary, linear_refs)
+        try:
+            github_ref = self.github.create_delivery_issue(run.run_id, summary, linear_refs)
+        except Exception as exc:
+            self._fail_retryable(run, "github", exc)
         run.external_refs = [*run.external_refs, github_ref]
         run = advance(
             run,
@@ -107,7 +136,10 @@ class DealWorkflowRunner:
             {"external_id": github_ref.external_id},
         )
 
-        invoice_ref = self.odoo.create_invoice_draft(run.run_id, quote)
+        try:
+            invoice_ref = self.odoo.create_invoice_draft(run.run_id, quote)
+        except Exception as exc:
+            self._fail_retryable(run, "invoice", exc)
         run.external_refs = [*run.external_refs, invoice_ref]
         run = advance(
             run,
@@ -116,8 +148,14 @@ class DealWorkflowRunner:
             {"external_id": invoice_ref.external_id},
         )
 
-        notification = self.models.compose_notification(run)
-        telegram_ref = self.telegram.send_status(run.run_id, notification)
+        try:
+            notification = self.models.compose_notification(run)
+        except Exception as exc:
+            self._fail_retryable(run, "telegram", exc)
+        try:
+            telegram_ref = self.telegram.send_status(run.run_id, notification)
+        except Exception as exc:
+            self._fail_retryable(run, "telegram", exc)
         run.external_refs = [*run.external_refs, telegram_ref]
         run = advance(
             run,
@@ -132,3 +170,17 @@ class DealWorkflowRunner:
             "complete",
             {"external_ref_count": len(run.external_refs)},
         )
+
+    def _fail_retryable(self, run: WorkflowRun, step_name: str, exc: Exception) -> NoReturn:
+        error_message = str(exc) or exc.__class__.__name__
+        failed_run = advance(
+            run,
+            WorkflowState.FAILED_RETRYABLE,
+            step_name,
+            {
+                "error": error_message,
+                "exception_type": exc.__class__.__name__,
+            },
+            error=error_message,
+        )
+        raise WorkflowRunFailed(failed_run, exc) from exc
