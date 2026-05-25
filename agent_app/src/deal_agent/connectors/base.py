@@ -36,7 +36,8 @@ def request_json(
     headers: dict[str, str],
     json: dict[str, Any],
     expected_status: int | None = None,
-) -> dict[str, Any]:
+    require_object: bool = True,
+) -> Any:
     try:
         response = http_client.post(url, headers=headers, json=json)
     except httpx.RequestError:
@@ -66,7 +67,7 @@ def request_json(
             retryable=False,
             status_code=response.status_code,
         ) from None
-    if not isinstance(payload, dict):
+    if require_object and not isinstance(payload, dict):
         raise ConnectorError(
             f"{service} response body was not a JSON object",
             retryable=False,

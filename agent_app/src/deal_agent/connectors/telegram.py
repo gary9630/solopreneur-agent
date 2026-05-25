@@ -26,11 +26,16 @@ class TelegramHttpConnector:
         self.base_url = base_url.rstrip("/")
         self._token = token
         self._http_client = http_client or httpx.Client(timeout=30.0)
+        self._message_refs: dict[tuple[str, str], ExternalRef] = {}
 
     def __repr__(self) -> str:
         return f"TelegramHttpConnector(base_url={self.base_url!r}, chat_id={self.chat_id!r})"
 
     def send_status(self, run_id: str, message: str) -> ExternalRef:
+        cache_key = (run_id, message)
+        if cache_key in self._message_refs:
+            return _copy_ref(self._message_refs[cache_key])
+
         payload = request_json(
             self._http_client,
             "Telegram",
@@ -59,11 +64,13 @@ class TelegramHttpConnector:
         if isinstance(chat, dict) and chat.get("id") is not None:
             chat_id = str(chat["id"])
 
-        return ExternalRef(
+        ref = ExternalRef(
             system="telegram",
             external_id=external_id,
             metadata={"kind": "message", "run_id": run_id, "chat_id": chat_id},
         )
+        self._message_refs[cache_key] = ref
+        return _copy_ref(ref)
 
 
 def _required_string(payload: dict[str, Any], key: str) -> str:
@@ -71,3 +78,7 @@ def _required_string(payload: dict[str, Any], key: str) -> str:
     if value is None:
         raise ConnectorError(f"Telegram response did not include {key}", retryable=False, status_code=200)
     return str(value)
+
+
+def _copy_ref(ref: ExternalRef) -> ExternalRef:
+    return ref.model_copy(deep=True)

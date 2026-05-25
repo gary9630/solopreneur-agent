@@ -31,6 +31,7 @@ class GitHubHttpConnector:
         self.base_url = base_url.rstrip("/")
         self._token = token
         self._http_client = http_client or httpx.Client(timeout=30.0)
+        self._delivery_issue_refs: dict[str, ExternalRef] = {}
 
     def __repr__(self) -> str:
         return (
@@ -44,6 +45,9 @@ class GitHubHttpConnector:
         summary: IntakeSummary,
         linear_refs: Sequence[ExternalRef],
     ) -> ExternalRef:
+        if run_id in self._delivery_issue_refs:
+            return _copy_ref(self._delivery_issue_refs[run_id])
+
         customer = summary.customer_name or "Customer"
         payload = request_json(
             self._http_client,
@@ -62,7 +66,7 @@ class GitHubHttpConnector:
             expected_status=201,
         )
         external_id = _required_string(payload, "id", "GitHub issue")
-        return ExternalRef(
+        ref = ExternalRef(
             system="github",
             external_id=external_id,
             url=_optional_string(payload, "html_url"),
@@ -72,6 +76,8 @@ class GitHubHttpConnector:
                 "number": _optional_int(payload, "number"),
             },
         )
+        self._delivery_issue_refs[run_id] = ref
+        return _copy_ref(ref)
 
 
 def _issue_body(
@@ -115,3 +121,7 @@ def _optional_int(payload: dict[str, Any], key: str) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _copy_ref(ref: ExternalRef) -> ExternalRef:
+    return ref.model_copy(deep=True)

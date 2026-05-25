@@ -27,6 +27,7 @@ class LinearHttpConnector:
         self.team_id = team_id
         self._api_key = api_key
         self._http_client = http_client or httpx.Client(timeout=30.0)
+        self._bootstrap_refs: dict[str, list[ExternalRef]] = {}
 
     def __repr__(self) -> str:
         return f"LinearHttpConnector(base_url={self.base_url!r}, team_id={self.team_id!r})"
@@ -37,13 +38,18 @@ class LinearHttpConnector:
         summary: IntakeSummary,
         issues: Sequence[DeliveryIssue],
     ) -> list[ExternalRef]:
+        if run_id in self._bootstrap_refs:
+            return [_copy_ref(ref) for ref in self._bootstrap_refs[run_id]]
+
         project = self._create_project(run_id, summary)
         project_id = project.external_id
         issue_refs = [
             self._create_issue(run_id, project_id, issue)
             for issue in issues
         ]
-        return [project, *issue_refs]
+        refs = [project, *issue_refs]
+        self._bootstrap_refs[run_id] = refs
+        return [_copy_ref(ref) for ref in refs]
 
     def _create_project(self, run_id: str, summary: IntakeSummary) -> ExternalRef:
         customer = summary.customer_name or "Customer"
@@ -52,6 +58,7 @@ class LinearHttpConnector:
             """
             mutation CreateProject($input: ProjectCreateInput!) {
               projectCreate(input: $input) {
+                success
                 project { id url }
               }
             }
@@ -64,13 +71,16 @@ class LinearHttpConnector:
                 }
             },
         )
-        project = _dig(payload, "data", "projectCreate", "project")
+        mutation = _mutation_payload(payload, "projectCreate")
+        project = _dig(mutation, "project")
         external_id = _required_string(project, "id", "Linear project")
+        metadata = {"kind": "project", "run_id": run_id}
+        _mark_graphql_errors(metadata, payload)
         return ExternalRef(
             system="linear",
             external_id=external_id,
             url=_optional_string(project, "url"),
-            metadata={"kind": "project", "run_id": run_id},
+            metadata=metadata,
         )
 
     def _create_issue(self, run_id: str, project_id: str, issue: DeliveryIssue) -> ExternalRef:
@@ -85,6 +95,7 @@ class LinearHttpConnector:
             """
             mutation CreateIssue($input: IssueCreateInput!) {
               issueCreate(input: $input) {
+                success
                 issue { id identifier url }
               }
             }
@@ -98,19 +109,22 @@ class LinearHttpConnector:
                 }
             },
         )
-        created_issue = _dig(payload, "data", "issueCreate", "issue")
+        mutation = _mutation_payload(payload, "issueCreate")
+        created_issue = _dig(mutation, "issue")
         external_id = _required_string(created_issue, "id", "Linear issue")
+        metadata = {
+            "kind": "issue",
+            "run_id": run_id,
+            "project_ref": project_id,
+            "identifier": _optional_string(created_issue, "identifier"),
+            "title": issue.title,
+        }
+        _mark_graphql_errors(metadata, payload)
         return ExternalRef(
             system="linear",
             external_id=external_id,
             url=_optional_string(created_issue, "url"),
-            metadata={
-                "kind": "issue",
-                "run_id": run_id,
-                "project_ref": project_id,
-                "identifier": _optional_string(created_issue, "identifier"),
-                "title": issue.title,
-            },
+            metadata=metadata,
         )
 
     def _graphql(
@@ -133,13 +147,26 @@ class LinearHttpConnector:
                 "variables": variables,
             },
         )
-        if payload.get("errors"):
+        if not isinstance(payload, dict):
             raise ConnectorError(
-                "Linear GraphQL request returned errors",
+                "Linear GraphQL response body was not an object",
                 retryable=False,
                 status_code=200,
             )
         return payload
+
+
+def _mutation_payload(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    try:
+        mutation = payload["data"][key]
+    except (KeyError, TypeError) as exc:
+        raise ConnectorError("Linear response was missing expected data", retryable=False, status_code=200) from exc
+
+    if not isinstance(mutation, dict):
+        raise ConnectorError("Linear mutation response was not an object", retryable=False, status_code=200)
+    if mutation.get("success") is not True:
+        raise ConnectorError("Linear mutation did not succeed", retryable=False, status_code=200)
+    return mutation
 
 
 def _dig(payload: dict[str, Any], *keys: str) -> Any:
@@ -165,3 +192,12 @@ def _optional_string(payload: Any, key: str) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _mark_graphql_errors(metadata: dict[str, Any], payload: dict[str, Any]) -> None:
+    if payload.get("errors"):
+        metadata["graphql_errors"] = True
+
+
+def _copy_ref(ref: ExternalRef) -> ExternalRef:
+    return ref.model_copy(deep=True)
