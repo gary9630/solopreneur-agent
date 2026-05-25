@@ -5,6 +5,7 @@ from deal_agent.connectors.base import (
     TelegramConnector,
 )
 from deal_agent.connectors.fakes import (
+    FakeConnectorStateError,
     FakeGitHubConnector,
     FakeLinearConnector,
     FakeOdooConnector,
@@ -13,6 +14,7 @@ from deal_agent.connectors.fakes import (
 
 __all__ = [
     "FakeGitHubConnector",
+    "FakeConnectorStateError",
     "FakeLinearConnector",
     "FakeOdooConnector",
     "FakeTelegramConnector",

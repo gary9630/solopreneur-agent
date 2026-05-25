@@ -11,6 +11,10 @@ from pydantic import BaseModel
 from deal_agent.models import DealBrief, DeliveryIssue, ExternalRef, IntakeSummary, QuoteDraft
 
 
+class FakeConnectorStateError(ValueError):
+    pass
+
+
 def _normalize(value: Any) -> Any:
     if isinstance(value, BaseModel):
         return _normalize(value.model_dump(mode="json"))
@@ -46,6 +50,10 @@ def _ref(system: str, kind: str, key: str, metadata: dict[str, Any]) -> External
     )
 
 
+def _copy_ref(ref: ExternalRef) -> ExternalRef:
+    return ref.model_copy(deep=True)
+
+
 class FakeOdooConnector:
     def __init__(self) -> None:
         self.leads: dict[str, ExternalRef] = {}
@@ -66,9 +74,13 @@ class FakeOdooConnector:
                     "problem_statement": summary.problem_statement,
                 },
             )
-        return self.leads[key]
+        return _copy_ref(self.leads[key])
 
     def create_quotation(self, run_id: str, quote: QuoteDraft) -> ExternalRef:
+        lead_key = f"lead:{run_id}"
+        if lead_key not in self.leads:
+            raise FakeConnectorStateError("Odoo lead is required before creating a quotation")
+
         key = f"quotation:{run_id}"
         if key not in self.quotations:
             self.quotations[key] = _ref(
@@ -81,9 +93,13 @@ class FakeOdooConnector:
                     "total": str(quote.total),
                 },
             )
-        return self.quotations[key]
+        return _copy_ref(self.quotations[key])
 
     def create_invoice_draft(self, run_id: str, quote: QuoteDraft) -> ExternalRef:
+        quotation_key = f"quotation:{run_id}"
+        if quotation_key not in self.quotations:
+            raise FakeConnectorStateError("Odoo quotation is required before creating an invoice draft")
+
         key = f"invoice_draft:{run_id}"
         if key not in self.invoice_drafts:
             self.invoice_drafts[key] = _ref(
@@ -96,7 +112,7 @@ class FakeOdooConnector:
                     "total": str(quote.total),
                 },
             )
-        return self.invoice_drafts[key]
+        return _copy_ref(self.invoice_drafts[key])
 
 
 class FakeLinearConnector:
@@ -124,8 +140,8 @@ class FakeLinearConnector:
             )
 
         issue_refs: list[ExternalRef] = []
-        for index, issue in enumerate(issues, start=1):
-            issue_key = f"issue:{run_id}:{index}"
+        for issue in issues:
+            issue_key = f"issue:{run_id}:{_digest(issue)}"
             if issue_key not in self.issues:
                 self.issues[issue_key] = _ref(
                     "linear",
@@ -138,9 +154,9 @@ class FakeLinearConnector:
                         "labels": list(issue.labels),
                     },
                 )
-            issue_refs.append(self.issues[issue_key])
+            issue_refs.append(_copy_ref(self.issues[issue_key]))
 
-        return [self.projects[project_key], *issue_refs]
+        return [_copy_ref(self.projects[project_key]), *issue_refs]
 
 
 class FakeGitHubConnector:
@@ -166,7 +182,7 @@ class FakeGitHubConnector:
                     "linear_external_ids": [ref.external_id for ref in linear_refs],
                 },
             )
-        return self.delivery_issues[key]
+        return _copy_ref(self.delivery_issues[key])
 
 
 class FakeTelegramConnector:
@@ -185,4 +201,4 @@ class FakeTelegramConnector:
                     "message": message,
                 },
             )
-        return self.messages[key]
+        return _copy_ref(self.messages[key])
