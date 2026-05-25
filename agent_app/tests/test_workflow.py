@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+import deal_agent.workflow as workflow
 from deal_agent.models import WorkflowRun, WorkflowState
 from deal_agent.workflow import InvalidTransition, advance
 
@@ -57,6 +58,72 @@ def test_failed_retryable_can_be_reached_from_active_states():
     assert updated.steps[-1].step_name == "odoo"
     assert updated.steps[-1].state_before is WorkflowState.INTAKE_SUMMARIZED
     assert updated.steps[-1].state_after is WorkflowState.FAILED_RETRYABLE
+
+
+def test_failed_retryable_can_be_reached_from_new_for_intake_transient_failure():
+    run = WorkflowRun.from_brief("run_1", "brief")
+
+    updated = advance(run, WorkflowState.FAILED_RETRYABLE, "intake", {"error": "nim timeout"})
+
+    assert updated.state is WorkflowState.FAILED_RETRYABLE
+    assert updated.steps[-1].state_before is WorkflowState.NEW
+    assert updated.steps[-1].state_after is WorkflowState.FAILED_RETRYABLE
+
+
+def test_failure_transition_records_error_and_retry_bookkeeping():
+    run = WorkflowRun.from_brief("run_1", "brief")
+    summarized = advance(run, WorkflowState.INTAKE_SUMMARIZED, "intake", {})
+
+    updated = advance(
+        summarized,
+        WorkflowState.FAILED_RETRYABLE,
+        "odoo",
+        {"error": "odoo timeout"},
+    )
+
+    assert updated.steps[-1].error == "odoo timeout"
+    assert updated.last_error == "odoo timeout"
+    assert updated.retry_count == 1
+
+
+def test_failure_transition_accepts_explicit_error():
+    run = WorkflowRun.from_brief("run_1", "brief")
+
+    updated = advance(
+        run,
+        WorkflowState.FAILED_TERMINAL,
+        "guardrail",
+        {"error": "metadata error"},
+        error="policy denied",
+    )
+
+    assert updated.steps[-1].error == "policy denied"
+    assert updated.last_error == "policy denied"
+
+
+def test_resume_retryable_returns_to_last_failed_step_state_without_mutating_input():
+    run = WorkflowRun.from_brief("run_1", "brief")
+    failed = advance(run, WorkflowState.FAILED_RETRYABLE, "intake", {"error": "nim timeout"})
+
+    resumed = workflow.resume_retryable(failed, metadata={"attempt": 2})
+
+    assert resumed is not failed
+    assert resumed.state is WorkflowState.NEW
+    assert resumed.last_error is None
+    assert resumed.retry_count == failed.retry_count
+    assert resumed.steps[-1].step_name == "retry_resume"
+    assert resumed.steps[-1].state_before is WorkflowState.FAILED_RETRYABLE
+    assert resumed.steps[-1].state_after is WorkflowState.NEW
+    assert resumed.steps[-1].metadata == {"attempt": 2}
+    assert failed.state is WorkflowState.FAILED_RETRYABLE
+    assert failed.last_error == "nim timeout"
+
+
+def test_resume_retryable_rejects_non_retryable_run():
+    run = WorkflowRun.from_brief("run_1", "brief")
+
+    with pytest.raises(InvalidTransition):
+        workflow.resume_retryable(run)
 
 
 def test_success_path_reaches_completed_in_order():
