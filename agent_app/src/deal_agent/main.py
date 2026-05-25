@@ -1,5 +1,7 @@
+from typing import Annotated
+
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from deal_agent.connectors import (
     FakeGitHubConnector,
@@ -13,12 +15,14 @@ from deal_agent.services import FakeModelServices
 
 app = FastAPI(title="Deal Agent")
 
+NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
 
 class DemoWorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    run_id: str
-    message: str
+    run_id: NonBlankStr
+    message: NonBlankStr
 
 
 def create_demo_runner() -> DealWorkflowRunner:
