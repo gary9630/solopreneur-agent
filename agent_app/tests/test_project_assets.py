@@ -53,7 +53,7 @@ def test_docker_compose_exposes_odoo_with_extra_addons_mount():
     assert "db" in services
     assert "odoo" in services
     assert "postgres" in services["db"]["image"]
-    assert "odoo" in services["odoo"]["image"]
+    assert services["odoo"]["image"] in {"odoo:19.0", "odoo:19"}
     assert "db" in services["odoo"]["depends_on"]
 
     volumes = services["odoo"]["volumes"]
@@ -83,6 +83,8 @@ def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
 
     required_phrases = [
         "hackathon MVP",
+        "Odoo 19",
+        "Odoo 19 demo baseline",
         "uv run pytest",
         "uv run deal-agent-demo",
         "docker compose up -d db odoo",

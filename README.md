@@ -36,7 +36,7 @@ make demo
 
 ## Odoo Demo
 
-Start Postgres and Odoo:
+The Odoo 19 demo baseline is intentional: the custom addon uses Odoo 19 view syntax, including list views. Start Postgres and Odoo 19:
 
 ```bash
 docker compose up -d db odoo
@@ -48,7 +48,7 @@ The compose file mounts the local addon directory:
 ./odoo_addons:/mnt/extra-addons
 ```
 
-After Odoo starts, install the `deal_to_delivery_agent` addon to inspect deal contexts, audit logs, and demo products.
+After Odoo 19 starts, install the `deal_to_delivery_agent` addon to inspect deal contexts, audit logs, and demo products.
 
 ## NemoClaw Demo Assets
 

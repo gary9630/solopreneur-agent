@@ -24,13 +24,13 @@ Expected result: compact JSON showing a completed deal-to-delivery run with Odoo
 
 ## 3. Start The Odoo Demo Surface
 
-Start the local Odoo stack:
+The Odoo 19 demo baseline matches the addon view syntax used by the bridge module. Start the local Odoo 19 stack:
 
 ```bash
 docker compose up -d db odoo
 ```
 
-Open Odoo on `http://localhost:8069`, install the `deal_to_delivery_agent` addon, and show the Deal Agent menus, deal context records, audit logs, and demo products.
+Open Odoo 19 on `http://localhost:8069`, install the `deal_to_delivery_agent` addon, and show the Deal Agent menus, deal context records, audit logs, and demo products.
 
 ## 4. Apply NemoClaw Policies And Skills
 
