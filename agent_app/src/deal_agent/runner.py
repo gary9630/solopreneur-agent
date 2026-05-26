@@ -51,7 +51,7 @@ class DealWorkflowRunner:
         try:
             summary = self.models.extract_intake(message)
         except Exception as exc:
-            self._fail_retryable(run, "intake", exc)
+            self._fail(run, "intake", exc)
         run.intake_summary = summary
         run = advance(
             run,
@@ -66,7 +66,7 @@ class DealWorkflowRunner:
         try:
             lead_ref = self.odoo.create_lead(run.run_id, run.brief, summary)
         except Exception as exc:
-            self._fail_retryable(run, "odoo_lead", exc)
+            self._fail(run, "odoo_lead", exc)
         run.external_refs = [*run.external_refs, lead_ref]
         run = advance(
             run,
@@ -78,7 +78,7 @@ class DealWorkflowRunner:
         try:
             quote = self.models.draft_quote(summary)
         except Exception as exc:
-            self._fail_retryable(run, "quote", exc)
+            self._fail(run, "quote", exc)
         run.quote_draft = quote
         run = advance(
             run,
@@ -93,7 +93,7 @@ class DealWorkflowRunner:
         try:
             quotation_ref = self.odoo.create_quotation(run.run_id, quote)
         except Exception as exc:
-            self._fail_retryable(run, "odoo_quotation", exc)
+            self._fail(run, "odoo_quotation", exc)
         run.external_refs = [*run.external_refs, quotation_ref]
         run = advance(
             run,
@@ -105,7 +105,7 @@ class DealWorkflowRunner:
         try:
             issues = self.models.break_down_issues(summary)
         except Exception as exc:
-            self._fail_retryable(run, "issue_breakdown", exc)
+            self._fail(run, "issue_breakdown", exc)
         run.delivery_issues = issues
         run = record_step(
             run,
@@ -115,7 +115,7 @@ class DealWorkflowRunner:
         try:
             linear_refs = self.linear.bootstrap_project(run.run_id, summary, issues)
         except Exception as exc:
-            self._fail_retryable(run, "linear", exc)
+            self._fail(run, "linear", exc)
         run.external_refs = [*run.external_refs, *linear_refs]
         run = advance(
             run,
@@ -127,7 +127,7 @@ class DealWorkflowRunner:
         try:
             github_ref = self.github.create_delivery_issue(run.run_id, summary, linear_refs)
         except Exception as exc:
-            self._fail_retryable(run, "github", exc)
+            self._fail(run, "github", exc)
         run.external_refs = [*run.external_refs, github_ref]
         run = advance(
             run,
@@ -139,7 +139,7 @@ class DealWorkflowRunner:
         try:
             invoice_ref = self.odoo.create_invoice_draft(run.run_id, quote)
         except Exception as exc:
-            self._fail_retryable(run, "invoice", exc)
+            self._fail(run, "invoice", exc)
         run.external_refs = [*run.external_refs, invoice_ref]
         run = advance(
             run,
@@ -151,11 +151,11 @@ class DealWorkflowRunner:
         try:
             notification = self.models.compose_notification(run)
         except Exception as exc:
-            self._fail_retryable(run, "telegram", exc)
+            self._fail(run, "telegram", exc)
         try:
             telegram_ref = self.telegram.send_status(run.run_id, notification)
         except Exception as exc:
-            self._fail_retryable(run, "telegram", exc)
+            self._fail(run, "telegram", exc)
         run.external_refs = [*run.external_refs, telegram_ref]
         run = advance(
             run,
@@ -171,16 +171,23 @@ class DealWorkflowRunner:
             {"external_ref_count": len(run.external_refs)},
         )
 
-    def _fail_retryable(self, run: WorkflowRun, step_name: str, exc: Exception) -> NoReturn:
+    def _fail(self, run: WorkflowRun, step_name: str, exc: Exception) -> NoReturn:
         error_message = str(exc) or exc.__class__.__name__
+        retryable = getattr(exc, "retryable", True)
+        failure_state = WorkflowState.FAILED_RETRYABLE if retryable else WorkflowState.FAILED_TERMINAL
+        metadata = {
+            "error": error_message,
+            "exception_type": exc.__class__.__name__,
+            "retryable": retryable,
+        }
+        status_code = getattr(exc, "status_code", None)
+        if status_code is not None:
+            metadata["status_code"] = status_code
         failed_run = advance(
             run,
-            WorkflowState.FAILED_RETRYABLE,
+            failure_state,
             step_name,
-            {
-                "error": error_message,
-                "exception_type": exc.__class__.__name__,
-            },
+            metadata,
             error=error_message,
         )
         raise WorkflowRunFailed(failed_run, exc) from exc

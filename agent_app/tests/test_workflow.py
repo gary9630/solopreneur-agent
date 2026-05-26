@@ -48,6 +48,33 @@ def test_failed_terminal_can_be_reached_from_new():
     assert updated.steps[0].state_after is WorkflowState.FAILED_TERMINAL
 
 
+def test_failed_terminal_can_be_reached_from_active_states():
+    run = WorkflowRun.from_brief("run_1", "brief")
+
+    for next_state, step_name in [
+        (WorkflowState.INTAKE_SUMMARIZED, "intake"),
+        (WorkflowState.ODOO_LEAD_CREATED, "odoo_lead"),
+        (WorkflowState.QUOTE_DRAFTED, "quote"),
+        (WorkflowState.ODOO_QUOTATION_CREATED, "odoo_quotation"),
+        (WorkflowState.LINEAR_BOOTSTRAPPED, "linear"),
+        (WorkflowState.GITHUB_DELIVERY_TRACKED, "github"),
+        (WorkflowState.INVOICE_DRAFT_CREATED, "invoice"),
+        (WorkflowState.TELEGRAM_NOTIFIED, "telegram"),
+    ]:
+        run = advance(run, next_state, step_name, {})
+
+        failed = advance(
+            run,
+            WorkflowState.FAILED_TERMINAL,
+            f"{step_name}_terminal",
+            {"error": "invalid credentials"},
+        )
+
+        assert failed.state is WorkflowState.FAILED_TERMINAL
+        assert failed.steps[-1].state_before is next_state
+        assert failed.steps[-1].state_after is WorkflowState.FAILED_TERMINAL
+
+
 def test_failed_retryable_can_be_reached_from_active_states():
     run = WorkflowRun.from_brief("run_1", "brief")
     summarized = advance(run, WorkflowState.INTAKE_SUMMARIZED, "intake", {})

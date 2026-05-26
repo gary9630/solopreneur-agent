@@ -1,5 +1,6 @@
 import pytest
 
+from deal_agent.connectors.base import ConnectorError
 from deal_agent.connectors.fakes import (
     FakeGitHubConnector,
     FakeLinearConnector,
@@ -65,6 +66,11 @@ class FailingLinearConnector(FakeLinearConnector):
         raise RuntimeError("linear API timeout")
 
 
+class TerminalLinearConnector(FakeLinearConnector):
+    def bootstrap_project(self, run_id, summary, issues):
+        raise ConnectorError("linear authentication failed", retryable=False, status_code=401)
+
+
 def test_runner_raises_failed_run_with_partial_refs_when_quote_fails_after_odoo_lead():
     runner = DealWorkflowRunner(
         models=QuoteFailureModelServices(),
@@ -111,3 +117,32 @@ def test_runner_raises_failed_run_with_partial_refs_when_linear_fails():
     assert failed.steps[-1].state_before is WorkflowState.ODOO_QUOTATION_CREATED
     assert failed.steps[-1].state_after is WorkflowState.FAILED_RETRYABLE
     assert failed.steps[-1].error == "linear API timeout"
+
+
+def test_runner_marks_non_retryable_connector_errors_terminal_after_partial_refs():
+    runner = DealWorkflowRunner(
+        models=FakeModelServices(),
+        odoo=FakeOdooConnector(),
+        linear=TerminalLinearConnector(),
+        github=FakeGitHubConnector(),
+        telegram=FakeTelegramConnector(),
+    )
+
+    with pytest.raises(WorkflowRunFailed) as exc_info:
+        runner.run("run_linear_auth_failure", "ACME needs a two-week Odoo automation prototype.")
+
+    failed = exc_info.value.run
+    assert failed.state is WorkflowState.FAILED_TERMINAL
+    assert failed.retry_count == 0
+    assert failed.last_error == "linear authentication failed"
+    assert [(ref.system, ref.metadata["kind"]) for ref in failed.external_refs] == [
+        ("odoo", "lead"),
+        ("odoo", "quotation"),
+    ]
+    assert failed.delivery_issues
+    assert [step.step_name for step in failed.steps][-2:] == ["issue_breakdown", "linear"]
+    assert failed.steps[-1].state_before is WorkflowState.ODOO_QUOTATION_CREATED
+    assert failed.steps[-1].state_after is WorkflowState.FAILED_TERMINAL
+    assert failed.steps[-1].error == "linear authentication failed"
+    assert failed.steps[-1].metadata["retryable"] is False
+    assert failed.steps[-1].metadata["status_code"] == 401

@@ -25,30 +25,37 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
     WorkflowState.ODOO_LEAD_CREATED: {
         WorkflowState.QUOTE_DRAFTED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.QUOTE_DRAFTED: {
         WorkflowState.ODOO_QUOTATION_CREATED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.ODOO_QUOTATION_CREATED: {
         WorkflowState.LINEAR_BOOTSTRAPPED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.LINEAR_BOOTSTRAPPED: {
         WorkflowState.GITHUB_DELIVERY_TRACKED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.GITHUB_DELIVERY_TRACKED: {
         WorkflowState.INVOICE_DRAFT_CREATED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.INVOICE_DRAFT_CREATED: {
         WorkflowState.TELEGRAM_NOTIFIED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
     WorkflowState.TELEGRAM_NOTIFIED: {
         WorkflowState.COMPLETED,
         WorkflowState.FAILED_RETRYABLE,
+        WorkflowState.FAILED_TERMINAL,
     },
 }
 
