@@ -11,7 +11,7 @@
 以下命令都從 repo root 執行：
 
 ```bash
-cd /Users/Paichenhung/Desktop/Github-gary9630/solopreneur-agent
+cd /path/to/solopreneur-agent
 ```
 
 ## 1. Prerequisites
