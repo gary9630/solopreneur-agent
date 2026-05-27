@@ -10,6 +10,15 @@ from deal_agent.models import DealBrief, ExternalRef, IntakeSummary, QuoteDraft,
 from deal_agent.tool_models import BusinessCardContact, CrmLookupResult
 
 
+DEFAULT_SERVICE_PRODUCT_NAME = "Deal-to-Delivery Prototype Sprint"
+DEFAULT_SALE_JOURNAL_NAME = "Deal Agent Sales Journal"
+DEFAULT_SALE_JOURNAL_CODE = "DAG"
+DEFAULT_INCOME_ACCOUNT_NAME = "Deal Agent Service Income"
+DEFAULT_INCOME_ACCOUNT_CODE = "DAGINC"
+DEFAULT_RECEIVABLE_ACCOUNT_NAME = "Deal Agent Receivable"
+DEFAULT_RECEIVABLE_ACCOUNT_CODE = "DAGAR"
+
+
 class OdooHttpConnector:
     def __init__(
         self,
@@ -32,6 +41,11 @@ class OdooHttpConnector:
         self._lead_refs: dict[str, ExternalRef] = {}
         self._quotation_refs: dict[str, ExternalRef] = {}
         self._invoice_refs: dict[str, ExternalRef] = {}
+        self._default_service_product_id: int | None = None
+        self._sale_journal_id: int | None = None
+        self._income_account_id: int | None = None
+        self._receivable_account_id: int | None = None
+        self._receivable_partner_ids: set[int] = set()
 
     def __repr__(self) -> str:
         return f"OdooHttpConnector(base_url={self.base_url!r}, database={self.database!r})"
@@ -63,11 +77,16 @@ class OdooHttpConnector:
             return _copy_ref(self._quotation_refs[run_id])
 
         partner_id = self._require_partner(run_id, "quotation")
+        quotation_ref = self.create_sale_order_for_partner(run_id, partner_id, quote)
+        self._quotation_refs[run_id] = quotation_ref
+        return _copy_ref(quotation_ref)
+
+    def create_sale_order_for_partner(self, run_id: str, partner_id: int, quote: QuoteDraft) -> ExternalRef:
         payload = {
             "partner_id": partner_id,
             "client_order_ref": run_id,
             "note": quote.notes,
-            "order_line": [_sale_line_command(item) for item in quote.line_items],
+            "order_line": [_sale_line_command(item, self._quote_line_product_id(item)) for item in quote.line_items],
         }
         quotation_ref = self._create(
             "sale.order",
@@ -76,19 +95,30 @@ class OdooHttpConnector:
             kind="quotation",
             run_id=run_id,
         )
-        self._quotation_refs[run_id] = quotation_ref
-        return _copy_ref(quotation_ref)
+        return quotation_ref
 
     def create_invoice_draft(self, run_id: str, quote: QuoteDraft) -> ExternalRef:
         if run_id in self._invoice_refs:
             return _copy_ref(self._invoice_refs[run_id])
 
         partner_id = self._require_partner(run_id, "invoice draft")
+        invoice_ref = self.create_invoice_draft_for_partner(run_id, partner_id, quote)
+        self._invoice_refs[run_id] = invoice_ref
+        return _copy_ref(invoice_ref)
+
+    def create_invoice_draft_for_partner(self, run_id: str, partner_id: int, quote: QuoteDraft) -> ExternalRef:
+        self._ensure_partner_receivable_account(partner_id)
+        sale_journal_id = self._ensure_sale_journal_id()
+        income_account_id = self._ensure_income_account_id()
         payload = {
             "partner_id": partner_id,
+            "journal_id": sale_journal_id,
             "move_type": "out_invoice",
             "ref": run_id,
-            "invoice_line_ids": [_invoice_line_command(item) for item in quote.line_items],
+            "invoice_line_ids": [
+                _invoice_line_command(item, self._quote_line_product_id(item), income_account_id)
+                for item in quote.line_items
+            ],
         }
         invoice_ref = self._create(
             "account.move",
@@ -97,8 +127,7 @@ class OdooHttpConnector:
             kind="invoice_draft",
             run_id=run_id,
         )
-        self._invoice_refs[run_id] = invoice_ref
-        return _copy_ref(invoice_ref)
+        return invoice_ref
 
     def upsert_contact_from_business_card(self, run_id: str, contact: BusinessCardContact) -> ExternalRef:
         existing = self._find_partner(contact)
@@ -110,7 +139,7 @@ class OdooHttpConnector:
                 "write",
                 {
                     "ids": [partner_id],
-                    "values": values,
+                    "vals": values,
                 },
             )
             action = "updated"
@@ -123,6 +152,24 @@ class OdooHttpConnector:
             external_id=str(partner_id),
             metadata={"kind": "contact", "model": "res.partner", "run_id": run_id, "action": action},
         )
+
+    def upsert_deal_contact(
+        self,
+        run_id: str,
+        *,
+        customer_name: str | None,
+        contact_name: str | None,
+        contact_email: str | None,
+        phone: str | None = None,
+    ) -> ExternalRef:
+        contact = BusinessCardContact(
+            name=contact_name or customer_name,
+            company=customer_name,
+            email=contact_email,
+            phone=phone,
+            raw_text=f"Deal contact for run {run_id}",
+        )
+        return self.upsert_contact_from_business_card(run_id, contact)
 
     def create_crm_lead_for_contact(
         self,
@@ -137,6 +184,33 @@ class OdooHttpConnector:
             "email_from": contact.email,
             "phone": contact.phone,
             "description": contact.raw_text or "Business card captured from Telegram.",
+        }
+        return self._create(
+            "crm.lead",
+            "create",
+            _drop_none(payload),
+            kind="lead",
+            run_id=run_id,
+        )
+
+    def create_crm_lead_for_partner(
+        self,
+        run_id: str,
+        partner_id: int,
+        *,
+        customer_name: str | None,
+        contact_name: str | None,
+        contact_email: str | None,
+        phone: str | None = None,
+        problem_statement: str | None = None,
+    ) -> ExternalRef:
+        payload = {
+            "name": f"{customer_name or contact_name or 'Deal'} - {run_id}",
+            "partner_id": partner_id,
+            "contact_name": contact_name,
+            "email_from": contact_email,
+            "phone": phone,
+            "description": problem_statement,
         }
         return self._create(
             "crm.lead",
@@ -272,7 +346,7 @@ class OdooHttpConnector:
         )
 
     def _create_id(self, model: str, method: str, payload: dict[str, Any]) -> int:
-        result = self._call_json(model, method, payload)
+        result = self._call_json(model, method, _json2_method_payload(method, payload))
         return _extract_odoo_id(result)
 
     def _call_json(self, model: str, method: str, payload: dict[str, Any]) -> Any:
@@ -314,6 +388,135 @@ class OdooHttpConnector:
             records.append(item)
         return records
 
+    def _quote_line_product_id(self, item: QuoteLineItem) -> int:
+        if item.external_product_id:
+            try:
+                return int(item.external_product_id)
+            except ValueError:
+                raise ConnectorError(
+                    "Odoo quote line external_product_id must be an integer product.product id",
+                    retryable=False,
+                    status_code=422,
+                ) from None
+
+        if self._default_service_product_id is not None:
+            return self._default_service_product_id
+
+        records = self._search_read(
+            "product.product",
+            {
+                "domain": [["name", "ilike", DEFAULT_SERVICE_PRODUCT_NAME]],
+                "fields": ["id", "name"],
+                "limit": 1,
+            },
+        )
+        if not records:
+            raise ConnectorError(
+                f"Odoo service product {DEFAULT_SERVICE_PRODUCT_NAME!r} was not found; install the "
+                "deal_to_delivery_agent addon before creating sale orders",
+                retryable=False,
+                status_code=404,
+            )
+        self._default_service_product_id = _record_id(records[0], "Odoo product")
+        return self._default_service_product_id
+
+    def _ensure_sale_journal_id(self) -> int:
+        if self._sale_journal_id is not None:
+            return self._sale_journal_id
+
+        records = self._search_read(
+            "account.journal",
+            {
+                "domain": [["type", "=", "sale"]],
+                "fields": ["id", "name", "code", "type"],
+                "limit": 1,
+            },
+        )
+        if records:
+            self._sale_journal_id = _record_id(records[0], "Odoo sale journal")
+            return self._sale_journal_id
+
+        self._sale_journal_id = self._create_id(
+            "account.journal",
+            "create",
+            {
+                "name": DEFAULT_SALE_JOURNAL_NAME,
+                "type": "sale",
+                "code": DEFAULT_SALE_JOURNAL_CODE,
+            },
+        )
+        return self._sale_journal_id
+
+    def _ensure_income_account_id(self) -> int:
+        if self._income_account_id is not None:
+            return self._income_account_id
+
+        records = self._search_read(
+            "account.account",
+            {
+                "domain": [["account_type", "in", ["income", "income_other"]]],
+                "fields": ["id", "name", "code", "account_type"],
+                "limit": 1,
+            },
+        )
+        if records:
+            self._income_account_id = _record_id(records[0], "Odoo income account")
+            return self._income_account_id
+
+        self._income_account_id = self._create_id(
+            "account.account",
+            "create",
+            {
+                "name": DEFAULT_INCOME_ACCOUNT_NAME,
+                "code": DEFAULT_INCOME_ACCOUNT_CODE,
+                "account_type": "income",
+            },
+        )
+        return self._income_account_id
+
+    def _ensure_partner_receivable_account(self, partner_id: int) -> None:
+        if partner_id in self._receivable_partner_ids:
+            return
+
+        receivable_account_id = self._ensure_receivable_account_id()
+        self._call_json(
+            "res.partner",
+            "write",
+            {
+                "ids": [partner_id],
+                "vals": {"property_account_receivable_id": receivable_account_id},
+            },
+        )
+        self._receivable_partner_ids.add(partner_id)
+
+    def _ensure_receivable_account_id(self) -> int:
+        if self._receivable_account_id is not None:
+            return self._receivable_account_id
+
+        records = self._search_read(
+            "account.account",
+            {
+                "domain": [["account_type", "=", "asset_receivable"]],
+                "fields": ["id", "name", "code", "account_type"],
+                "limit": 1,
+            },
+        )
+        if records:
+            self._receivable_account_id = _record_id(records[0], "Odoo receivable account")
+            return self._receivable_account_id
+
+        self._receivable_account_id = self._create_id(
+            "account.account",
+            "create",
+            {
+                "name": DEFAULT_RECEIVABLE_ACCOUNT_NAME,
+                "code": DEFAULT_RECEIVABLE_ACCOUNT_CODE,
+                "account_type": "asset_receivable",
+                "reconcile": True,
+            },
+        )
+        return self._receivable_account_id
+
     def _headers(self) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self._token}",
@@ -324,22 +527,31 @@ class OdooHttpConnector:
         return headers
 
 
-def _sale_line_command(item: QuoteLineItem) -> list[Any]:
-    payload: dict[str, str] = {
+def _sale_line_command(item: QuoteLineItem, product_id: int) -> list[Any]:
+    payload: dict[str, str | int] = {
         "name": item.description,
+        "product_id": product_id,
         "product_uom_qty": _decimal_string(item.quantity),
         "price_unit": _decimal_string(item.unit_price),
     }
     return [0, 0, payload]
 
 
-def _invoice_line_command(item: QuoteLineItem) -> list[Any]:
-    payload: dict[str, str] = {
+def _invoice_line_command(item: QuoteLineItem, product_id: int, account_id: int) -> list[Any]:
+    payload: dict[str, str | int] = {
         "name": item.description,
+        "product_id": product_id,
+        "account_id": account_id,
         "quantity": _decimal_string(item.quantity),
         "price_unit": _decimal_string(item.unit_price),
     }
     return [0, 0, payload]
+
+
+def _json2_method_payload(method: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if method == "create":
+        return {"vals_list": payload}
+    return payload
 
 
 def _extract_odoo_id(payload: Any) -> int:

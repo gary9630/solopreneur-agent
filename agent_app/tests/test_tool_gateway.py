@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from deal_agent import main as main_module
 from deal_agent.main import app, get_settings
 from deal_agent.config import Settings
+from deal_agent.models import ExternalRef
 
 
 def _settings(**overrides) -> Settings:
@@ -165,6 +166,54 @@ def test_atomic_deal_prepare_defaults_to_dry_run():
     ]
 
 
+def test_atomic_deal_prepare_echoes_live_gate_without_side_effects():
+    _override_settings(_settings(live_workflow_enabled=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/deal/prepare",
+        json={
+            "run_id": "prep_live_1",
+            "message": "Acme Studio wants a two-week Odoo CRM automation package.",
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "live"
+    assert body["live_enabled"] is True
+    assert body["side_effects"] is False
+
+
+def test_atomic_deal_prepare_extracts_realistic_brief_fields():
+    _override_settings(_settings())
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/deal/prepare",
+        json={
+            "run_id": "prep_acme_1",
+            "message": (
+                "Customer: Acme Studio. Need a two-week Odoo CRM automation package starting next Monday. "
+                "Scope: lead capture, quote generation, delivery task tracking, and stakeholder update when "
+                "delivery is ready. Budget: USD 8000. Contact: Ada Lovelace, ada@example.com."
+            ),
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "dry_run"
+    assert body["live_enabled"] is False
+    assert body["intake_summary"]["customer_name"] == "Acme Studio"
+    assert body["intake_summary"]["contact_name"] == "Ada Lovelace"
+    assert body["intake_summary"]["contact_email"] == "ada@example.com"
+    assert body["intake_summary"]["estimated_budget"] == "8000"
+    assert body["quote_draft"]["total"] == "8000"
+
+
 def test_atomic_odoo_deal_artifacts_dry_run_has_planned_actions():
     _override_settings(_settings())
     client = TestClient(app)
@@ -179,12 +228,70 @@ def test_atomic_odoo_deal_artifacts_dry_run_has_planned_actions():
         "mode": "dry_run",
         "live_enabled": False,
         "planned_actions": [
+            "create or update Odoo contact",
             "create Odoo CRM lead",
-            "create Odoo quotation",
+            "create Odoo sale order quotation",
             "create Odoo draft invoice",
             "write Odoo deal context",
             "write Odoo audit log",
         ],
+        "external_refs": [],
+    }
+
+
+def test_atomic_odoo_contact_dry_run_has_planned_actions():
+    _override_settings(_settings())
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/odoo/contact",
+        json={
+            "run_id": "odoo_contact_1",
+            "customer_name": "Acme Studio",
+            "contact_name": "Ada Lovelace",
+            "contact_email": "ada@example.com",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "mode": "dry_run",
+        "live_enabled": False,
+        "planned_actions": ["create or update Odoo contact"],
+        "external_refs": [],
+    }
+
+
+def test_atomic_odoo_sale_order_dry_run_has_planned_actions():
+    _override_settings(_settings())
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/odoo/sale-order",
+        json={
+            "run_id": "odoo_sale_1",
+            "partner_id": "1001",
+            "quote_draft": {
+                "currency": "USD",
+                "line_items": [
+                    {
+                        "description": "Odoo CRM automation package",
+                        "quantity": "1",
+                        "unit_price": "8000",
+                    }
+                ],
+                "subtotal": "8000",
+                "tax": "0",
+                "total": "8000",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "mode": "dry_run",
+        "live_enabled": False,
+        "planned_actions": ["create Odoo sale order quotation"],
         "external_refs": [],
     }
 
@@ -254,11 +361,171 @@ def test_atomic_odoo_deal_artifacts_live_uses_runner_components(monkeypatch):
     assert body["mode"] == "live"
     assert body["live_enabled"] is True
     assert [ref["metadata"]["kind"] for ref in body["external_refs"]] == [
+        "contact",
         "lead",
         "quotation",
         "invoice_draft",
     ]
     assert calls == [live_settings]
+
+
+def test_atomic_odoo_deal_artifacts_live_uses_prepared_inputs_without_nim_reparse(monkeypatch):
+    live_settings = _settings(
+        live_workflow_enabled=True,
+        nvidia_api_key="nvidia-key",
+        odoo_api_key="odoo-key",
+    )
+    runner = main_module.create_demo_runner()
+
+    class FailingModels:
+        def extract_intake(self, message):
+            raise AssertionError("prepared deal inputs should avoid NIM reparse")
+
+        def draft_quote(self, summary):
+            raise AssertionError("prepared quote inputs should avoid NIM reparse")
+
+    runner.models = FailingModels()
+    monkeypatch.setattr(main_module, "create_live_runner", lambda settings: runner)
+    _override_settings(live_settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/odoo/deal-artifacts",
+        json={
+            "run_id": "odoo_live_prepared_1",
+            "message": "Original operator approval.",
+            "deal_brief": {
+                "customer_name": "Acme Studio",
+                "contact_name": "Ada Lovelace",
+                "contact_email": "ada@example.com",
+                "problem_statement": "Acme Studio needs Odoo CRM automation.",
+                "scope_items": ["lead capture", "quote generation"],
+                "goals": ["prepare Odoo draft artifacts"],
+                "assumptions": [],
+                "risks": [],
+                "estimated_budget": "8000",
+                "timeline": "two weeks",
+                "confidence": 0.9,
+            },
+            "quote_draft": {
+                "currency": "USD",
+                "line_items": [
+                    {
+                        "description": "Odoo CRM automation package",
+                        "quantity": "1",
+                        "unit_price": "8000",
+                    }
+                ],
+                "subtotal": "8000",
+                "tax": "0",
+                "total": "8000",
+            },
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "live"
+    assert [ref["metadata"]["kind"] for ref in body["external_refs"]][:4] == [
+        "contact",
+        "lead",
+        "quotation",
+        "invoice_draft",
+    ]
+
+
+def test_atomic_odoo_deal_artifacts_live_with_prepared_inputs_does_not_require_nvidia(monkeypatch):
+    live_settings = _settings(
+        live_workflow_enabled=True,
+        nvidia_api_key=None,
+        odoo_api_key="odoo-key",
+    )
+    monkeypatch.setattr(main_module, "create_live_runner", lambda settings: main_module.create_demo_runner())
+    _override_settings(live_settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/odoo/deal-artifacts",
+        json={
+            "run_id": "odoo_live_prepared_no_nim_1",
+            "message": "Original operator approval.",
+            "deal_brief": {
+                "customer_name": "Acme Studio",
+                "contact_name": "Ada Lovelace",
+                "contact_email": "ada@example.com",
+                "problem_statement": "Acme Studio needs Odoo CRM automation.",
+                "scope_items": ["lead capture", "quote generation"],
+                "goals": ["prepare Odoo draft artifacts"],
+                "assumptions": [],
+                "risks": [],
+                "estimated_budget": "8000",
+                "timeline": "two weeks",
+                "confidence": 0.9,
+            },
+            "quote_draft": {
+                "currency": "USD",
+                "line_items": [
+                    {
+                        "description": "Odoo CRM automation package",
+                        "quantity": "1",
+                        "unit_price": "8000",
+                    }
+                ],
+                "subtotal": "8000",
+                "tax": "0",
+                "total": "8000",
+            },
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "live"
+
+
+def test_atomic_odoo_trace_uses_odoo_addon_state_selection():
+    captured: dict[str, dict] = {}
+
+    class TraceOdoo:
+        def write_deal_context(self, **payload):
+            captured["context"] = payload
+            return ExternalRef(
+                system="odoo",
+                external_id="501",
+                metadata={"kind": "deal_context", "run_id": payload["run_id"]},
+            )
+
+        def write_audit_log(self, **payload):
+            captured["audit"] = payload
+            return ExternalRef(
+                system="odoo",
+                external_id="502",
+                metadata={"kind": "audit_log", "run_id": payload["run_id"]},
+            )
+
+    refs = [
+        ExternalRef(system="odoo", external_id="101", metadata={"kind": "lead"}),
+        ExternalRef(system="odoo", external_id="202", metadata={"kind": "quotation"}),
+        ExternalRef(system="odoo", external_id="303", metadata={"kind": "invoice_draft"}),
+    ]
+    summary = main_module.IntakeSummary(
+        customer_name="Acme Studio",
+        contact_email="ada@example.com",
+        problem_statement="Acme needs Odoo automation.",
+    )
+
+    trace_refs = main_module._write_optional_atomic_odoo_trace(
+        TraceOdoo(),
+        "run_1",
+        "Acme needs Odoo automation.",
+        summary,
+        refs,
+    )
+
+    assert captured["context"]["state"] == "quoted"
+    assert captured["audit"]["state_after"] == "quoted"
+    assert [ref.metadata["kind"] for ref in trace_refs] == ["deal_context", "audit_log"]
 
 
 def test_atomic_delivery_tasks_live_uses_runner_components(monkeypatch):

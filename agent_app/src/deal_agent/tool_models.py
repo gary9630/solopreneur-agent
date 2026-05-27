@@ -67,6 +67,40 @@ class OdooDealArtifactsRequest(StrictModel):
     live: bool = False
 
 
+class OdooContactRequest(StrictModel):
+    run_id: NonBlankStr
+    customer_name: CleanStr | None = None
+    contact_name: CleanStr | None = None
+    contact_email: CleanStr | None = None
+    phone: CleanStr | None = None
+    live: bool = False
+
+
+class OdooCrmLeadRequest(StrictModel):
+    run_id: NonBlankStr
+    partner_id: NonBlankStr
+    customer_name: CleanStr | None = None
+    contact_name: CleanStr | None = None
+    contact_email: CleanStr | None = None
+    phone: CleanStr | None = None
+    problem_statement: CleanStr | None = None
+    live: bool = False
+
+
+class OdooSaleOrderRequest(StrictModel):
+    run_id: NonBlankStr
+    partner_id: NonBlankStr
+    quote_draft: dict = Field(default_factory=dict)
+    live: bool = False
+
+
+class OdooDraftInvoiceRequest(StrictModel):
+    run_id: NonBlankStr
+    partner_id: NonBlankStr
+    quote_draft: dict = Field(default_factory=dict)
+    live: bool = False
+
+
 class DeliveryTasksRequest(StrictModel):
     run_id: NonBlankStr
     message: NonBlankStr

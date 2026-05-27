@@ -69,60 +69,119 @@ def test_odoo_http_connector_posts_json2_payloads_with_auth_and_database_header(
         if request.url.path == "/json/2/res.partner/create":
             body = json.loads(payload.decode("utf-8"))
             assert body == {
-                "name": "ACME",
-                "email": "ada@example.com",
-                "comment": "Created by deal-agent run run_1",
+                "vals_list": {
+                    "name": "ACME",
+                    "email": "ada@example.com",
+                    "comment": "Created by deal-agent run run_1",
+                }
             }
             return httpx.Response(200, json={"result": {"id": 1001}})
 
         if request.url.path == "/json/2/crm.lead/create":
             body = json.loads(payload.decode("utf-8"))
             assert body == {
-                "name": "ACME - run_1",
-                "partner_id": 1001,
-                "contact_name": "Ada Lovelace",
-                "email_from": "ada@example.com",
-                "description": "Manual deal handoff is slowing delivery.",
+                "vals_list": {
+                    "name": "ACME - run_1",
+                    "partner_id": 1001,
+                    "contact_name": "Ada Lovelace",
+                    "email_from": "ada@example.com",
+                    "description": "Manual deal handoff is slowing delivery.",
+                }
             }
             return httpx.Response(200, json={"result": {"id": 101}})
+
+        if request.url.path == "/json/2/product.product/search_read":
+            body = json.loads(payload.decode("utf-8"))
+            assert body == {
+                "domain": [["name", "ilike", "Deal-to-Delivery Prototype Sprint"]],
+                "fields": ["id", "name"],
+                "limit": 1,
+            }
+            return httpx.Response(200, json=[{"id": 777, "name": "Deal-to-Delivery Prototype Sprint"}])
 
         if request.url.path == "/json/2/sale.order/create":
             body = json.loads(payload.decode("utf-8"))
             assert body == {
-                "partner_id": 1001,
-                "client_order_ref": "run_1",
-                "note": "Valid for demo use.",
-                "order_line": [
-                    [
-                        0,
-                        0,
-                        {
-                            "name": "Hackathon MVP implementation",
-                            "product_uom_qty": "1",
-                            "price_unit": "4500",
-                        },
-                    ]
-                ],
+                "vals_list": {
+                    "partner_id": 1001,
+                    "client_order_ref": "run_1",
+                    "note": "Valid for demo use.",
+                    "order_line": [
+                        [
+                            0,
+                            0,
+                            {
+                                "name": "Hackathon MVP implementation",
+                                "product_id": 777,
+                                "product_uom_qty": "1",
+                                "price_unit": "4500",
+                            },
+                        ]
+                    ],
+                }
             }
             return httpx.Response(200, json={"result": {"id": 202}})
+
+        if request.url.path == "/json/2/res.partner/write":
+            body = json.loads(payload.decode("utf-8"))
+            assert body == {
+                "ids": [1001],
+                "vals": {"property_account_receivable_id": 808},
+            }
+            return httpx.Response(200, json=True)
+
+        if request.url.path == "/json/2/account.journal/search_read":
+            body = json.loads(payload.decode("utf-8"))
+            assert body == {
+                "domain": [["type", "=", "sale"]],
+                "fields": ["id", "name", "code", "type"],
+                "limit": 1,
+            }
+            return httpx.Response(200, json=[{"id": 606, "name": "Customer Invoices", "code": "INV", "type": "sale"}])
+
+        if request.url.path == "/json/2/account.account/search_read":
+            body = json.loads(payload.decode("utf-8"))
+            if body["domain"] == [["account_type", "=", "asset_receivable"]]:
+                assert body == {
+                    "domain": [["account_type", "=", "asset_receivable"]],
+                    "fields": ["id", "name", "code", "account_type"],
+                    "limit": 1,
+                }
+                return httpx.Response(
+                    200,
+                    json=[{"id": 808, "name": "Receivable", "code": "120000", "account_type": "asset_receivable"}],
+                )
+            if body["domain"] == [["account_type", "in", ["income", "income_other"]]]:
+                assert body == {
+                    "domain": [["account_type", "in", ["income", "income_other"]]],
+                    "fields": ["id", "name", "code", "account_type"],
+                    "limit": 1,
+                }
+                return httpx.Response(200, json=[{"id": 707, "name": "Sales", "code": "400000", "account_type": "income"}])
+            raise AssertionError(f"unexpected account search body {body}")
 
         if request.url.path == "/json/2/account.move/create":
             body = json.loads(payload.decode("utf-8"))
             assert body == {
-                "partner_id": 1001,
-                "move_type": "out_invoice",
-                "ref": "run_1",
-                "invoice_line_ids": [
-                    [
-                        0,
-                        0,
-                        {
-                            "name": "Hackathon MVP implementation",
-                            "quantity": "1",
-                            "price_unit": "4500",
-                        },
-                    ]
-                ],
+                "vals_list": {
+                    "partner_id": 1001,
+                    "journal_id": 606,
+                    "move_type": "out_invoice",
+                    "ref": "run_1",
+                    "invoice_line_ids": [
+                        [
+                            0,
+                            0,
+                            {
+                                "name": "Hackathon MVP implementation",
+                                "product_id": 777,
+                                "account_id": 707,
+                                "quantity": "1",
+                                "price_unit": "4500",
+                            },
+                        ]
+                    ],
+                }
             }
             return httpx.Response(200, json={"result": {"id": 303}})
 
@@ -142,7 +201,12 @@ def test_odoo_http_connector_posts_json2_payloads_with_auth_and_database_header(
     assert [request.url.path for request in seen] == [
         "/json/2/res.partner/create",
         "/json/2/crm.lead/create",
+        "/json/2/product.product/search_read",
         "/json/2/sale.order/create",
+        "/json/2/account.account/search_read",
+        "/json/2/res.partner/write",
+        "/json/2/account.journal/search_read",
+        "/json/2/account.account/search_read",
         "/json/2/account.move/create",
     ]
     assert lead == ExternalRef(
@@ -165,6 +229,8 @@ def test_odoo_http_connector_accepts_raw_json2_create_results():
             return httpx.Response(200, json=1001)
         if request.url.path == "/json/2/crm.lead/create":
             return httpx.Response(200, json=[101])
+        if request.url.path == "/json/2/product.product/search_read":
+            return httpx.Response(200, json=[{"id": 777}])
         if request.url.path == "/json/2/sale.order/create":
             return httpx.Response(200, json=202)
         raise AssertionError(f"unexpected path {request.url.path}")
@@ -181,6 +247,7 @@ def test_odoo_http_connector_accepts_raw_json2_create_results():
     assert seen_paths == [
         "/json/2/res.partner/create",
         "/json/2/crm.lead/create",
+        "/json/2/product.product/search_read",
         "/json/2/sale.order/create",
     ]
     assert lead.external_id == "101"
@@ -197,8 +264,19 @@ def test_odoo_http_connector_caches_successful_refs_and_requires_partner_for_lat
             return httpx.Response(200, json=1001)
         if request.url.path == "/json/2/crm.lead/create":
             return httpx.Response(200, json=101)
+        if request.url.path == "/json/2/product.product/search_read":
+            return httpx.Response(200, json=[{"id": 777}])
         if request.url.path == "/json/2/sale.order/create":
             return httpx.Response(200, json=202)
+        if request.url.path == "/json/2/res.partner/write":
+            return httpx.Response(200, json=True)
+        if request.url.path == "/json/2/account.journal/search_read":
+            return httpx.Response(200, json=[{"id": 606}])
+        if request.url.path == "/json/2/account.account/search_read":
+            body = json.loads(request.content.decode("utf-8"))
+            if body["domain"] == [["account_type", "=", "asset_receivable"]]:
+                return httpx.Response(200, json=[{"id": 808}])
+            return httpx.Response(200, json=[{"id": 707}])
         if request.url.path == "/json/2/account.move/create":
             return httpx.Response(200, json=303)
         raise AssertionError(f"unexpected path {request.url.path}")
@@ -222,7 +300,104 @@ def test_odoo_http_connector_caches_successful_refs_and_requires_partner_for_lat
     assert first_lead == second_lead
     assert first_quote == second_quote
     assert first_invoice == second_invoice
-    assert request_count == 4
+    assert request_count == 9
+
+
+def test_odoo_http_connector_creates_demo_accounting_prerequisites_when_invoice_setup_is_missing():
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        if request.url.path == "/json/2/res.partner/create":
+            return httpx.Response(200, json=1001)
+        if request.url.path == "/json/2/crm.lead/create":
+            return httpx.Response(200, json=101)
+        if request.url.path == "/json/2/res.partner/write":
+            body = json.loads(request.content.decode("utf-8"))
+            assert body == {
+                "ids": [1001],
+                "vals": {"property_account_receivable_id": 808},
+            }
+            return httpx.Response(200, json=True)
+        if request.url.path == "/json/2/account.journal/search_read":
+            return httpx.Response(200, json=[])
+        if request.url.path == "/json/2/account.journal/create":
+            body = json.loads(request.content.decode("utf-8"))
+            assert body == {
+                "vals_list": {
+                    "name": "Deal Agent Sales Journal",
+                    "type": "sale",
+                    "code": "DAG",
+                }
+            }
+            return httpx.Response(200, json=606)
+        if request.url.path == "/json/2/account.account/search_read":
+            body = json.loads(request.content.decode("utf-8"))
+            if body["domain"] in (
+                [["account_type", "=", "asset_receivable"]],
+                [["account_type", "in", ["income", "income_other"]]],
+            ):
+                return httpx.Response(200, json=[])
+            raise AssertionError(f"unexpected account search body {body}")
+        if request.url.path == "/json/2/account.account/create":
+            body = json.loads(request.content.decode("utf-8"))
+            if body["vals_list"]["account_type"] == "asset_receivable":
+                assert body == {
+                    "vals_list": {
+                        "name": "Deal Agent Receivable",
+                        "code": "DAGAR",
+                        "account_type": "asset_receivable",
+                        "reconcile": True,
+                    }
+                }
+                return httpx.Response(200, json=808)
+            if body["vals_list"]["account_type"] == "income":
+                assert body == {
+                    "vals_list": {
+                        "name": "Deal Agent Service Income",
+                        "code": "DAGINC",
+                        "account_type": "income",
+                    }
+                }
+                return httpx.Response(200, json=707)
+            raise AssertionError(f"unexpected account create body {body}")
+        if request.url.path == "/json/2/product.product/search_read":
+            return httpx.Response(200, json=[{"id": 777}])
+        if request.url.path == "/json/2/account.move/create":
+            body = json.loads(request.content.decode("utf-8"))
+            assert body["vals_list"]["journal_id"] == 606
+            assert body["vals_list"]["invoice_line_ids"][0][2]["account_id"] == 707
+            assert body["vals_list"]["invoice_line_ids"][0][2]["product_id"] == 777
+            return httpx.Response(200, json=303)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    connector = OdooHttpConnector(
+        base_url="https://odoo.test/",
+        token="odoo-secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    connector.create_lead("run_1", DealBrief(message="Build it"), sample_summary())
+    invoice = connector.create_invoice_draft("run_1", sample_quote())
+
+    assert seen_paths == [
+        "/json/2/res.partner/create",
+        "/json/2/crm.lead/create",
+        "/json/2/account.account/search_read",
+        "/json/2/account.account/create",
+        "/json/2/res.partner/write",
+        "/json/2/account.journal/search_read",
+        "/json/2/account.journal/create",
+        "/json/2/account.account/search_read",
+        "/json/2/account.account/create",
+        "/json/2/product.product/search_read",
+        "/json/2/account.move/create",
+    ]
+    assert invoice == ExternalRef(
+        system="odoo",
+        external_id="303",
+        metadata={"kind": "invoice_draft", "model": "account.move", "run_id": "run_1"},
+    )
 
 
 def test_odoo_http_connector_upserts_existing_business_card_contact():
@@ -237,7 +412,7 @@ def test_odoo_http_connector_upserts_existing_business_card_contact():
         if request.url.path == "/json/2/res.partner/write":
             assert body == {
                 "ids": [77],
-                "values": {
+                "vals": {
                     "name": "Ada Lovelace",
                     "email": "ada@example.com",
                     "phone": "+1 555 0100",
@@ -287,12 +462,15 @@ def test_odoo_http_connector_creates_business_card_contact_and_lead():
         if request.url.path == "/json/2/res.partner/search_read":
             return httpx.Response(200, json=[])
         if request.url.path == "/json/2/res.partner/create":
+            body = json.loads(request.content.decode("utf-8"))
+            assert body["vals_list"]["name"] == "Ada Lovelace"
+            assert body["vals_list"]["company_name"] == "Analytical Engines LLC"
             return httpx.Response(200, json=88)
         if request.url.path == "/json/2/crm.lead/create":
             body = json.loads(request.content.decode("utf-8"))
-            assert body["partner_id"] == 88
-            assert body["contact_name"] == "Ada Lovelace"
-            assert body["email_from"] == "ada@example.com"
+            assert body["vals_list"]["partner_id"] == 88
+            assert body["vals_list"]["contact_name"] == "Ada Lovelace"
+            assert body["vals_list"]["email_from"] == "ada@example.com"
             return httpx.Response(200, json=99)
         raise AssertionError(f"unexpected path {request.url.path}")
 
@@ -354,9 +532,10 @@ def test_odoo_http_connector_writes_deal_context_and_audit_log():
         body = json.loads(request.content.decode("utf-8"))
         seen.append((request.url.path, body))
         if request.url.path == "/json/2/deal.agent.deal.context/create":
+            assert body["vals_list"]["sale_order_id"] == 202
             return httpx.Response(200, json=501)
         if request.url.path == "/json/2/deal.agent.audit.log/create":
-            assert body["deal_context_id"] == 501
+            assert body["vals_list"]["deal_context_id"] == 501
             return httpx.Response(200, json=502)
         raise AssertionError(f"unexpected path {request.url.path}")
 

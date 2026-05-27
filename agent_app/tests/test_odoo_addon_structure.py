@@ -105,6 +105,7 @@ def test_access_control_rows_cover_custom_models_for_demo_users():
     audit_log = rows_by_model["model_deal_agent_audit_log"]
     assert audit_log["group_id:id"] == "base.group_user"
     assert audit_log["perm_read"] == "1"
+    assert audit_log["perm_create"] == "1"
 
 
 def test_menu_items_expose_bridge_actions():

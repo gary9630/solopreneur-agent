@@ -98,11 +98,13 @@ def test_makefile_exports_dotenv_to_demo_targets():
 
 def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
     readme = read_text("README.md")
+    install = read_text("Install.md")
     demo_script = read_text("docs/demo-script.md")
     notices = read_text("THIRD_PARTY_NOTICES.md")
-    combined = "\n".join([readme, demo_script, notices])
+    combined = "\n".join([readme, install, demo_script, notices])
 
     required_phrases = [
+        "Install.md",
         "hackathon MVP",
         "Odoo 19",
         "Odoo 19 demo baseline",
@@ -120,6 +122,9 @@ def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
         "Odoo and NemoClaw source code is not vendored",
         "NVIDIA NemoClaw",
         "Telegram Bot API",
+        "NVIDIA Endpoints",
+        "Balanced",
+        "USE_CUSTOM_IMAGE=0",
     ]
     for phrase in required_phrases:
         assert phrase in combined

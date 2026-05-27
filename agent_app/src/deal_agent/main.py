@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import HTTPException
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
 from deal_agent.config import Settings, settings
 from deal_agent.connectors import (
@@ -14,7 +14,7 @@ from deal_agent.connectors import (
     TelegramHttpConnector,
 )
 from deal_agent.live_factory import _normalize_nim_base_url, create_live_runner
-from deal_agent.models import DealBrief, WorkflowRun
+from deal_agent.models import DealBrief, IntakeSummary, QuoteDraft, WorkflowRun
 from deal_agent.nim_client import NimVisionClient
 from deal_agent.runner import DealWorkflowRunner, WorkflowRunFailed
 from deal_agent.services import FakeModelServices
@@ -26,7 +26,11 @@ from deal_agent.tool_models import (
     DealPrepareRequest,
     DeliveryTasksRequest,
     NotifyStakeholderRequest,
+    OdooContactRequest,
+    OdooCrmLeadRequest,
     OdooDealArtifactsRequest,
+    OdooDraftInvoiceRequest,
+    OdooSaleOrderRequest,
     ToolWorkflowRequest,
     ToolWorkflowResponse,
 )
@@ -163,14 +167,19 @@ def run_business_card_tool(
 
 
 @app.post("/tools/deal/prepare")
-def run_deal_prepare_tool(request: DealPrepareRequest) -> dict:
+def run_deal_prepare_tool(
+    request: DealPrepareRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
     runner = create_demo_runner()
     summary = runner.models.extract_intake(request.message)
     quote = runner.models.draft_quote(summary)
     issues = runner.models.break_down_issues(summary)
     return {
-        "mode": "dry_run",
-        "live_enabled": False,
+        "mode": "live" if live_enabled else "dry_run",
+        "live_enabled": live_enabled,
+        "side_effects": False,
         "run_id": request.run_id,
         "intake_summary": summary.model_dump(mode="json"),
         "quote_draft": quote.model_dump(mode="json"),
@@ -194,8 +203,9 @@ def run_odoo_deal_artifacts_tool(
             "mode": "dry_run",
             "live_enabled": False,
             "planned_actions": [
+                "create or update Odoo contact",
                 "create Odoo CRM lead",
-                "create Odoo quotation",
+                "create Odoo sale order quotation",
                 "create Odoo draft invoice",
                 "write Odoo deal context",
                 "write Odoo audit log",
@@ -203,18 +213,43 @@ def run_odoo_deal_artifacts_tool(
             "external_refs": [],
         }
 
-    missing_config = _missing_odoo_deal_artifacts_config(app_settings)
+    missing_config = _missing_odoo_deal_artifacts_config(
+        app_settings,
+        needs_nim=not (request.deal_brief and request.quote_draft),
+    )
     if missing_config:
         raise HTTPException(status_code=400, detail={"missing_config": missing_config})
 
     runner = create_live_runner(app_settings)
-    summary = runner.models.extract_intake(request.message)
-    quote = runner.models.draft_quote(summary)
-    brief = DealBrief(message=request.message)
+    summary = _summary_from_request_or_model(request, runner)
+    quote = _quote_from_request_or_model(request, runner, summary)
+    brief = DealBrief(
+        message=request.message,
+        customer_name=summary.customer_name,
+        contact_name=summary.contact_name,
+        contact_email=summary.contact_email,
+        requested_budget=summary.estimated_budget,
+        requested_timeline=summary.timeline,
+    )
+    contact_ref = runner.odoo.upsert_deal_contact(
+        request.run_id,
+        customer_name=summary.customer_name,
+        contact_name=summary.contact_name,
+        contact_email=summary.contact_email,
+    )
+    partner_id = _parse_odoo_id(contact_ref.external_id, "contact external_id")
     refs = [
-        runner.odoo.create_lead(request.run_id, brief, summary),
-        runner.odoo.create_quotation(request.run_id, quote),
-        runner.odoo.create_invoice_draft(request.run_id, quote),
+        contact_ref,
+        runner.odoo.create_crm_lead_for_partner(
+            request.run_id,
+            partner_id,
+            customer_name=summary.customer_name or brief.customer_name,
+            contact_name=summary.contact_name or brief.contact_name,
+            contact_email=summary.contact_email or brief.contact_email,
+            problem_statement=summary.problem_statement,
+        ),
+        runner.odoo.create_sale_order_for_partner(request.run_id, partner_id, quote),
+        runner.odoo.create_invoice_draft_for_partner(request.run_id, partner_id, quote),
     ]
     refs.extend(_write_optional_atomic_odoo_trace(runner.odoo, request.run_id, request.message, summary, refs))
     return {
@@ -222,6 +257,102 @@ def run_odoo_deal_artifacts_tool(
         "live_enabled": True,
         "external_refs": [ref.model_dump(mode="json") for ref in refs],
     }
+
+
+@app.post("/tools/odoo/contact")
+def run_odoo_contact_tool(
+    request: OdooContactRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
+    if not live_enabled:
+        return _dry_run(["create or update Odoo contact"])
+
+    missing_config = _missing_odoo_config(app_settings)
+    if missing_config:
+        raise HTTPException(status_code=400, detail={"missing_config": missing_config})
+
+    odoo = create_odoo_crm_connector(app_settings)
+    ref = odoo.upsert_deal_contact(
+        request.run_id,
+        customer_name=request.customer_name,
+        contact_name=request.contact_name,
+        contact_email=request.contact_email,
+        phone=request.phone,
+    )
+    return _live_refs([ref])
+
+
+@app.post("/tools/odoo/crm-lead")
+def run_odoo_crm_lead_tool(
+    request: OdooCrmLeadRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
+    if not live_enabled:
+        return _dry_run(["create Odoo CRM lead"])
+
+    missing_config = _missing_odoo_config(app_settings)
+    if missing_config:
+        raise HTTPException(status_code=400, detail={"missing_config": missing_config})
+
+    odoo = create_odoo_crm_connector(app_settings)
+    ref = odoo.create_crm_lead_for_partner(
+        request.run_id,
+        _parse_odoo_id(request.partner_id, "partner_id"),
+        customer_name=request.customer_name,
+        contact_name=request.contact_name,
+        contact_email=request.contact_email,
+        phone=request.phone,
+        problem_statement=request.problem_statement,
+    )
+    return _live_refs([ref])
+
+
+@app.post("/tools/odoo/sale-order")
+def run_odoo_sale_order_tool(
+    request: OdooSaleOrderRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
+    if not live_enabled:
+        return _dry_run(["create Odoo sale order quotation"])
+
+    missing_config = _missing_odoo_config(app_settings)
+    if missing_config:
+        raise HTTPException(status_code=400, detail={"missing_config": missing_config})
+
+    quote = _validate_quote_draft(request.quote_draft)
+    odoo = create_odoo_crm_connector(app_settings)
+    ref = odoo.create_sale_order_for_partner(
+        request.run_id,
+        _parse_odoo_id(request.partner_id, "partner_id"),
+        quote,
+    )
+    return _live_refs([ref])
+
+
+@app.post("/tools/odoo/draft-invoice")
+def run_odoo_draft_invoice_tool(
+    request: OdooDraftInvoiceRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
+    if not live_enabled:
+        return _dry_run(["create Odoo draft invoice"])
+
+    missing_config = _missing_odoo_config(app_settings)
+    if missing_config:
+        raise HTTPException(status_code=400, detail={"missing_config": missing_config})
+
+    quote = _validate_quote_draft(request.quote_draft)
+    odoo = create_odoo_crm_connector(app_settings)
+    ref = odoo.create_invoice_draft_for_partner(
+        request.run_id,
+        _parse_odoo_id(request.partner_id, "partner_id"),
+        quote,
+    )
+    return _live_refs([ref])
 
 
 @app.post("/tools/delivery/tasks")
@@ -321,11 +452,68 @@ def _missing_crm_business_card_config(app_settings: Settings) -> list[str]:
     return missing
 
 
-def _missing_odoo_deal_artifacts_config(app_settings: Settings) -> list[str]:
+def _missing_odoo_config(app_settings: Settings) -> list[str]:
+    missing = []
+    if not app_settings.odoo_api_key or app_settings.odoo_api_key.startswith("replace-with-"):
+        missing.append("ODOO_API_KEY")
+    return missing
+
+
+def _missing_odoo_deal_artifacts_config(app_settings: Settings, *, needs_nim: bool = True) -> list[str]:
     missing = _missing_odoo_config(app_settings)
-    if not app_settings.nvidia_api_key:
+    if needs_nim and not app_settings.nvidia_api_key:
         missing.insert(0, "NVIDIA_API_KEY")
     return missing
+
+
+def _dry_run(planned_actions: list[str]) -> dict:
+    return {
+        "mode": "dry_run",
+        "live_enabled": False,
+        "planned_actions": planned_actions,
+        "external_refs": [],
+    }
+
+
+def _live_refs(refs: list) -> dict:
+    return {
+        "mode": "live",
+        "live_enabled": True,
+        "external_refs": [ref.model_dump(mode="json") for ref in refs],
+    }
+
+
+def _summary_from_request_or_model(request: OdooDealArtifactsRequest, runner: DealWorkflowRunner) -> IntakeSummary:
+    if request.deal_brief:
+        try:
+            return IntakeSummary.model_validate(request.deal_brief)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail={"deal_brief": exc.errors()}) from exc
+    return runner.models.extract_intake(request.message)
+
+
+def _quote_from_request_or_model(
+    request: OdooDealArtifactsRequest,
+    runner: DealWorkflowRunner,
+    summary: IntakeSummary,
+) -> QuoteDraft:
+    if request.quote_draft:
+        return _validate_quote_draft(request.quote_draft)
+    return runner.models.draft_quote(summary)
+
+
+def _validate_quote_draft(payload: dict) -> QuoteDraft:
+    try:
+        return QuoteDraft.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail={"quote_draft": exc.errors()}) from exc
+
+
+def _parse_odoo_id(value: str, label: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail={label: "must be an integer Odoo id"}) from None
 
 
 def _missing_delivery_tasks_config(app_settings: Settings) -> list[str]:
@@ -365,7 +553,7 @@ def _write_optional_atomic_odoo_trace(
         customer_name=customer_name,
         contact_email=contact_email,
         source_message=message,
-        state="odoo_artifacts_created",
+        state="quoted",
         crm_lead_id=_safe_int(getattr(lead_ref, "external_id", None)),
         sale_order_id=_safe_int(getattr(quotation_ref, "external_id", None)),
         invoice_id=_safe_int(getattr(invoice_ref, "external_id", None)),
@@ -374,7 +562,7 @@ def _write_optional_atomic_odoo_trace(
         run_id=run_id,
         step_name="odoo_create_deal_artifacts",
         state_before="deal_prepared",
-        state_after="odoo_artifacts_created",
+        state_after="quoted",
         service="odoo",
         external_ref=context_ref.external_id,
         payload_summary="Created atomic Odoo lead, quotation, draft invoice, and deal context.",

@@ -22,6 +22,10 @@
       "crm_lookup",
       "business_card_capture",
       "deal_prepare",
+      "odoo_upsert_contact",
+      "odoo_create_crm_lead",
+      "odoo_create_sale_order",
+      "odoo_create_draft_invoice",
       "odoo_create_deal_artifacts",
       "delivery_create_tasks",
       "notify_stakeholder"

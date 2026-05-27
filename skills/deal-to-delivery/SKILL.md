@@ -1,6 +1,6 @@
 ---
 name: deal-to-delivery
-description: Operate the NVIDIA hackathon MVP agent that turns accepted SME deal requests into audited Odoo, Linear, GitHub, and Telegram handoffs.
+description: Operate the NVIDIA hackathon MVP agent that turns SME requests into audited Odoo, Linear, GitHub, and Telegram handoffs. In compact catalogs, use tool_search_code with openclaw.tools.search("tool") and openclaw.tools.call("tool", args).
 ---
 
 # Deal-to-Delivery Skill
@@ -28,7 +28,8 @@ Turn a customer request into a safe delivery package:
 - use Linear for engineering execution; keep GitHub focused on delivery traceability and code/PR coordination.
 - skills are instructions, not tool registration. This skill does not create a shell, HTTP, or project tool in OpenClaw.
 - use the first-class OpenClaw tools from the `solopreneur-tools` plugin when they are available. If they are not available, stop and say the project OpenClaw tool/plugin is missing.
-- do not guess missing shell tools such as `bash`, `exec`, `read`, `fetch`, or `tool_search_code`.
+- do not guess missing shell tools such as `bash`, `exec`, `read`, or `fetch`.
+- in NemoClaw compact tool-catalog mode, the visible tool may be only `tool_search_code`; use it with JavaScript code that calls `openclaw.tools.search("crm_lookup")`, `openclaw.tools.describe("crm_lookup")`, or `openclaw.tools.call("crm_lookup", { query: "...", live: false })`. Do not pass `require(...)` code, and do not call `openclaw.tools.search({ query: "..." })`.
 - normal operator prompts should not name tool APIs, URLs, curl commands, or JSON payloads.
 
 ## Operating Flow
@@ -49,14 +50,31 @@ The intended OpenClaw dashboard integration is a first-class OpenClaw tool/plugi
 - `crm_lookup`: search Odoo contacts and CRM leads.
 - `business_card_capture`: extract a business-card image and write the contact/lead when live mode is approved.
 - `deal_prepare`: turn a customer message into a deal brief, assumptions, quote draft, and delivery plan with no external side effects.
-- `odoo_create_deal_artifacts`: create Odoo CRM lead, quotation, draft invoice, deal context, and audit records after approval.
+- `odoo_upsert_contact`: create or update the Odoo `res.partner` contact/customer after approval.
+- `odoo_create_crm_lead`: create an Odoo CRM lead for the contact after approval.
+- `odoo_create_sale_order`: create an Odoo `sale.order` quotation after approval.
+- `odoo_create_draft_invoice`: create a draft Odoo invoice after approval. Never finalize invoices.
+- `odoo_create_deal_artifacts`: convenience fallback that creates contact, CRM lead, sale order quotation, draft invoice, deal context, and audit records after approval.
 - `delivery_create_tasks`: create Linear delivery tasks and GitHub delivery tracking after approval.
 - `notify_stakeholder`: send a Telegram update after relevant external refs exist.
 
 Each tool calls a host gateway endpoint behind the scenes. The user-facing chat should stay natural; the operator should not paste URLs or JSON payloads.
 
-Common tool arguments are `"run_id"`, `"message"`, and `"live": false` for dry-run preparation.
-For full live mode, tool arguments must include exactly `"live": true` and the host must also set `LIVE_WORKFLOW_ENABLED=1`.
+NemoClaw may compact the full tool catalog behind `tool_search_code`. When that happens, search and call the project tools like this:
+
+```js
+const matches = await openclaw.tools.search("crm_lookup");
+return matches;
+```
+
+```js
+return await openclaw.tools.call("crm_lookup", { query: "Ada Lovelace", live: false });
+```
+
+The first argument to `openclaw.tools.search` and `openclaw.tools.describe` is a string. The first argument to `openclaw.tools.call` is the exact tool name, and the second argument is the tool arguments object.
+
+Common tool arguments are `"run_id"` and `"message"`. Use `"live": false` only for dry-run preparation.
+For full live mode, every tool call in the sequence, including `deal_prepare`, must include exactly `"live": true`; the host must also set `LIVE_WORKFLOW_ENABLED=1`.
 
 After the tool response, summarize `mode`, `live_enabled`, final workflow state, and every external reference returned. If the gateway returns `missing_config`, stop and tell the operator which environment variables are missing.
 
@@ -77,7 +95,14 @@ Use `deal_prepare` only.
 Looks good. Create the Odoo deal records as draft artifacts, but do not mark won or finalize the invoice.
 ```
 
-Use `odoo_create_deal_artifacts` after confirming live approval.
+Preferred live sequence after confirming approval:
+
+1. Use `odoo_upsert_contact` with customer/contact/email from `deal_prepare`.
+2. Use `odoo_create_crm_lead` with the returned contact `external_id` as `partner_id`.
+3. Use `odoo_create_sale_order` with the returned contact `external_id` and prepared `quote_draft`.
+4. Use `odoo_create_draft_invoice` with the returned contact `external_id` and prepared `quote_draft`.
+
+Use `odoo_create_deal_artifacts` only as a convenience fallback when the operator needs one-shot Odoo draft artifacts.
 
 ```text
 Create the delivery work items and tracking issue for the approved Acme package.

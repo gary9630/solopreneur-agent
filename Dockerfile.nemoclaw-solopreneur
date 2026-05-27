@@ -3,10 +3,13 @@ FROM ${SANDBOX_BASE}
 
 COPY openclaw_plugins/solopreneur-tools/ /opt/solopreneur-tools/
 
-RUN mkdir -p /sandbox/.openclaw/extensions \
- && cp -a /opt/solopreneur-tools /sandbox/.openclaw/extensions/solopreneur-tools \
- && openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools --entry dist/index.js \
+RUN install -d -m 2770 /opt/solopreneur-tools/node_modules \
+ && ln -s /usr/local/lib/node_modules/openclaw /opt/solopreneur-tools/node_modules/openclaw \
+ && openclaw plugins install /opt/solopreneur-tools --force \
+ && openclaw plugins enable solopreneur-tools \
  && chown -R sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools \
- && openclaw doctor --fix
+ && chown -h sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools/node_modules/openclaw \
+ && openclaw plugins inspect solopreneur-tools --runtime --json > /dev/null \
+ && openclaw doctor --fix --non-interactive
 
 WORKDIR /opt/nemoclaw

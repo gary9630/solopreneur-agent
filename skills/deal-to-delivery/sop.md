@@ -28,14 +28,16 @@ This SOP keeps the hackathon demo repeatable and safe inside a NemoClaw sandbox.
 
 Skills are instructions, not tool registration. The dashboard agent needs the first-class OpenClaw `solopreneur-tools` plugin to run this workflow from chat.
 
-Do not guess missing shell tools. If `crm_lookup`, `business_card_capture`, `deal_prepare`, `odoo_create_deal_artifacts`, `delivery_create_tasks`, and `notify_stakeholder` are not visible, stop and tell the operator that the OpenClaw project tool/plugin is not installed for this sandbox.
+Do not guess missing shell tools. In NemoClaw compact tool-catalog mode, the model may see only `tool_search_code`; that is expected. Use its JavaScript body with `openclaw.tools.search("tool_name")`, `openclaw.tools.describe("tool_name")`, and `openclaw.tools.call("tool_name", args)`. Do not pass `require(...)` code and do not pass `{ query: "..." }` to `openclaw.tools.search`.
+
+If `openclaw.tools.search("crm_lookup")` cannot find `crm_lookup`, `business_card_capture`, `deal_prepare`, `odoo_upsert_contact`, `odoo_create_crm_lead`, `odoo_create_sale_order`, `odoo_create_draft_invoice`, `odoo_create_deal_artifacts`, `delivery_create_tasks`, or `notify_stakeholder`, stop and tell the operator that the OpenClaw project tool/plugin is not installed for this sandbox.
 
 Use these routing examples:
 
 - customer asks for a CRM contact, email, or phone number: call `crm_lookup`.
 - user provides a business-card photo: call `business_card_capture` with the image payload.
 - user describes a new deal or sales opportunity: call `deal_prepare` first.
-- operator approves draft Odoo records: call `odoo_create_deal_artifacts` with `"live": true`.
+- operator approves draft Odoo records: prefer `odoo_upsert_contact`, `odoo_create_crm_lead`, `odoo_create_sale_order`, then `odoo_create_draft_invoice` with `"live": true`; use `odoo_create_deal_artifacts` only as a one-shot fallback.
 - operator asks to set up delivery execution: call `delivery_create_tasks` after Odoo refs exist.
 - operator asks to update a customer or stakeholder: call `notify_stakeholder` after relevant refs exist.
 

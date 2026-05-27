@@ -17,6 +17,7 @@ WORKSPACE_FILES = [
     "AGENTS.md",
     "IDENTITY.md",
     "SOUL.md",
+    "TOOLS.md",
     "USER.md",
     "MEMORY.md",
 ]
@@ -24,16 +25,22 @@ SCRIPT_PATHS = [
     REPO_ROOT / "scripts" / "setup_nemoclaw.sh",
     REPO_ROOT / "scripts" / "apply_nemoclaw_policies.sh",
     REPO_ROOT / "scripts" / "install_nemoclaw_skills.sh",
+    REPO_ROOT / "scripts" / "sync_openclaw_workspace.sh",
     REPO_ROOT / "scripts" / "stop_nemoclaw_dashboard.sh",
     REPO_ROOT / "scripts" / "forward_nemoclaw_dashboard.sh",
     REPO_ROOT / "scripts" / "start_tool_gateway.sh",
     REPO_ROOT / "scripts" / "start_agent_telegram_ops.sh",
+    REPO_ROOT / "scripts" / "install_solopreneur_openclaw_plugin.sh",
     REPO_ROOT / "scripts" / "onboard_solopreneur_openclaw_sandbox.sh",
 ]
 ATOMIC_OPENCLAW_TOOLS = [
     "crm_lookup",
     "business_card_capture",
     "deal_prepare",
+    "odoo_upsert_contact",
+    "odoo_create_crm_lead",
+    "odoo_create_sale_order",
+    "odoo_create_draft_invoice",
     "odoo_create_deal_artifacts",
     "delivery_create_tasks",
     "notify_stakeholder",
@@ -149,6 +156,9 @@ def test_skill_documents_openclaw_tool_boundary_without_prompting_for_shell_tool
     required_phrases = [
         "skills are instructions, not tool registration",
         "first-class openclaw tool",
+        "compact tool-catalog mode",
+        'openclaw.tools.search("crm_lookup")',
+        'openclaw.tools.call("crm_lookup"',
         "normal operator prompts should not name tool apis",
         "do not guess missing shell tools",
         "telegram ops bot",
@@ -156,6 +166,10 @@ def test_skill_documents_openclaw_tool_boundary_without_prompting_for_shell_tool
         "business_card_capture",
         "crm_lookup",
         "deal_prepare",
+        "odoo_upsert_contact",
+        "odoo_create_crm_lead",
+        "odoo_create_sale_order",
+        "odoo_create_draft_invoice",
         "odoo_create_deal_artifacts",
         "delivery_create_tasks",
         "notify_stakeholder",
@@ -198,6 +212,8 @@ def test_solopreneur_openclaw_plugin_declares_atomic_tools_only():
     for tool_name in ATOMIC_OPENCLAW_TOOLS:
         assert f'name: "{tool_name}"' in runtime
 
+    assert "Keep false for preparation" not in runtime
+    assert "operator approved full live workflow" in runtime
     assert "deal_to_delivery_run" not in json.dumps(manifest)
     assert "deal_to_delivery_run" not in runtime
     assert "/tools/deal-to-delivery/run" not in runtime
@@ -217,6 +233,10 @@ def test_solopreneur_openclaw_plugin_routes_to_atomic_gateway_endpoints():
         "/tools/crm/lookup",
         "/tools/crm/business-card",
         "/tools/deal/prepare",
+        "/tools/odoo/contact",
+        "/tools/odoo/crm-lead",
+        "/tools/odoo/sale-order",
+        "/tools/odoo/draft-invoice",
         "/tools/odoo/deal-artifacts",
         "/tools/delivery/tasks",
         "/tools/notify/stakeholder",
@@ -256,9 +276,38 @@ def test_scripts_are_offline_safe_and_do_not_contain_real_secrets():
 def test_scripts_use_current_nemoclaw_policy_and_skill_commands():
     policy_script = read_text(REPO_ROOT / "scripts" / "apply_nemoclaw_policies.sh")
     skill_script = read_text(REPO_ROOT / "scripts" / "install_nemoclaw_skills.sh")
+    workspace_script = read_text(REPO_ROOT / "scripts" / "sync_openclaw_workspace.sh")
 
     assert 'nemoclaw sandbox policy add "$SANDBOX" --from-dir ./presets --yes' in policy_script
     assert 'nemoclaw sandbox skill install "$SANDBOX" ./skills/deal-to-delivery' in skill_script
+    assert 'WORKSPACE_ROOT="${WORKSPACE_ROOT:-workspace}"' in workspace_script
+    assert 'WORKSPACE_TARGET="${WORKSPACE_TARGET:-/sandbox/.openclaw/workspace}"' in workspace_script
+    assert 'install_workspace_file "AGENTS.md"' in workspace_script
+    assert 'install_workspace_file "IDENTITY.md"' in workspace_script
+    assert 'install_workspace_file "SOUL.md"' in workspace_script
+    assert 'install_workspace_file "TOOLS.md"' in workspace_script
+    assert 'install_workspace_file "USER.md"' in workspace_script
+    assert 'install_workspace_file "MEMORY.md"' in workspace_script
+    assert 'openssl base64 -A -in "$source_path" | nemoclaw "$SANDBOX" exec -- node -e' in workspace_script
+    assert "process.stdin.on(\"data\"" in workspace_script
+    assert 'Buffer.from(b64, "base64")' in workspace_script
+    assert '"$encoded"' not in workspace_script
+
+
+def test_solopreneur_plugin_install_makes_openclaw_sdk_resolvable():
+    script = read_text(REPO_ROOT / "scripts" / "install_solopreneur_openclaw_plugin.sh")
+    dockerfile = read_text(REPO_ROOT / "Dockerfile.nemoclaw-solopreneur")
+
+    assert "$PLUGIN_TARGET/node_modules/openclaw" in script
+    assert "ln -s /usr/local/lib/node_modules/openclaw" in script
+    assert 'openclaw plugins install "$PLUGIN_TARGET" --force' in script
+    assert "openclaw plugins enable solopreneur-tools" in script
+    assert "openclaw plugins inspect solopreneur-tools --runtime --json" in script
+    assert "/sandbox/.openclaw/extensions/solopreneur-tools/node_modules/openclaw" in dockerfile
+    assert "ln -s /usr/local/lib/node_modules/openclaw" in dockerfile
+    assert "openclaw plugins install /opt/solopreneur-tools --force" in dockerfile
+    assert "openclaw plugins enable solopreneur-tools" in dockerfile
+    assert "openclaw plugins inspect solopreneur-tools --runtime --json" in dockerfile
 
 
 def test_dashboard_forward_script_uses_service_forward_for_local_port():
@@ -288,35 +337,81 @@ def test_dashboard_stop_script_only_stops_known_forward_processes():
     assert 'Refusing to stop PID' in script
 
 
+def test_makefile_has_explicit_fresh_recreate_sandbox_target():
+    makefile = read_text(REPO_ROOT / "Makefile")
+
+    assert "nemoclaw-solopreneur-sandbox-recreate" in makefile
+    assert "bash scripts/onboard_solopreneur_openclaw_sandbox.sh --fresh --recreate-sandbox" in makefile
+
+
+def test_makefile_has_explicit_destroy_sandbox_targets():
+    makefile = read_text(REPO_ROOT / "Makefile")
+
+    assert "SANDBOX ?= deal-demo" in makefile
+    assert "nemoclaw-solopreneur-sandbox-destroy" in makefile
+    assert "nemoclaw-solopreneur-sandbox-destroy-clean" in makefile
+    assert "bash scripts/stop_nemoclaw_dashboard.sh" in makefile
+    assert "nemoclaw $(SANDBOX) destroy --yes\n" in makefile
+    assert "nemoclaw $(SANDBOX) destroy --yes --cleanup-gateway" in makefile
+
+
+def test_makefile_can_install_solopreneur_plugin_into_existing_sandbox():
+    makefile = read_text(REPO_ROOT / "Makefile")
+
+    assert "nemoclaw-solopreneur-plugin-install" in makefile
+    assert 'SANDBOX="$(SANDBOX)" bash scripts/install_solopreneur_openclaw_plugin.sh' in makefile
+    assert 'SANDBOX="$(SANDBOX)" bash scripts/sync_openclaw_workspace.sh' in makefile
+    assert 'nemoclaw "$(SANDBOX)" exec -- openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools --entry dist/index.js' in makefile
+    assert 'nemoclaw "$(SANDBOX)" exec -- openclaw plugins registry --refresh' in makefile
+    assert 'nemoclaw "$(SANDBOX)" recover' in makefile
+
+
 def test_solopreneur_openclaw_sandbox_onboard_assets_are_present():
     dockerfile = read_text(REPO_ROOT / "Dockerfile.nemoclaw-solopreneur")
     script = read_text(REPO_ROOT / "scripts" / "onboard_solopreneur_openclaw_sandbox.sh")
 
     assert "COPY openclaw_plugins/solopreneur-tools/" in dockerfile
     assert "/sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
-    assert "openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
     assert "chown -R sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
-    assert "openclaw doctor --fix" in dockerfile
+    assert "openclaw plugins install /opt/solopreneur-tools --force" in dockerfile
+    assert "openclaw plugins enable solopreneur-tools" in dockerfile
+    assert "openclaw plugins validate" not in dockerfile
+    assert "openclaw doctor --fix --non-interactive" in dockerfile
+    assert "openclaw config" not in dockerfile
+    assert "openclaw models" not in dockerfile
+    assert "/sandbox/.openclaw/openclaw.json || rm" not in dockerfile
+    assert "/sandbox/.openclaw/.config-hash || rm" not in dockerfile
     assert 'SANDBOX="${SANDBOX:-deal-demo}"' in script
     assert 'DASHBOARD_PORT="${TARGET_DASHBOARD_PORT:-18789}"' in script
-    assert 'OPENCLAW_DEFAULT_MODEL="${OPENCLAW_DEFAULT_MODEL:-nvidia/nemotron-3-super-120b-a12b}"' in script
     assert 'PLUGIN_ROOT="${PLUGIN_ROOT:-openclaw_plugins/solopreneur-tools}"' in script
-    assert 'USE_CUSTOM_IMAGE="${USE_CUSTOM_IMAGE:-0}"' in script
+    assert 'USE_CUSTOM_IMAGE="${USE_CUSTOM_IMAGE:-1}"' in script
     assert 'if [[ "$USE_CUSTOM_IMAGE" == "1" ]]' in script
     assert 'nemoclaw onboard --from "$DOCKERFILE" --name "$SANDBOX" "$@"' in script
     assert 'nemoclaw onboard --name "$SANDBOX" "$@"' in script
-    assert 'tar -C "$PLUGIN_ROOT" -cf - .' in script
-    assert 'tar -C /sandbox/.openclaw/extensions/solopreneur-tools -xf -' in script
-    assert "openclaw config set gateway.mode local" in script
-    assert "openclaw config set gateway.bind loopback" in script
-    assert 'openclaw config set gateway.port "$DASHBOARD_PORT" --strict-json' in script
-    assert "openclaw config set gateway.auth.mode token" in script
-    assert 'randomBytes(32).toString("base64url")' in script
-    assert "gateway.auth.token" in script
-    assert '"models","auth","paste-api-key"' in script
-    assert "--provider\",\"nvidia\"" in script
-    assert "--profile-id\",\"nvidia:manual\"" in script
-    assert 'openclaw models set "$OPENCLAW_DEFAULT_MODEL"' in script
+    assert 'bash scripts/install_solopreneur_openclaw_plugin.sh' in script
+    assert "exec -- sh -lc '\n" not in script
+    assert 'openclaw doctor --fix --yes --non-interactive' not in script
+    assert "NemoClaw owns inference routing" in script
+    assert "openclaw models set" not in script
+    assert "models\",\"auth\",\"paste-api-key" not in script
+    assert 'gateway.mode' in script
+    assert 'SANDBOX="$SANDBOX" bash scripts/sync_openclaw_workspace.sh' in script
     assert "openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools" in script
     assert "openclaw plugins registry --refresh" in script
     assert 'nemoclaw "$SANDBOX" recover' in script
+
+
+def test_solopreneur_plugin_install_script_uses_stdin_not_newline_arguments():
+    script = read_text(REPO_ROOT / "scripts" / "install_solopreneur_openclaw_plugin.sh")
+
+    assert 'PLUGIN_ROOT="${PLUGIN_ROOT:-openclaw_plugins/solopreneur-tools}"' in script
+    assert 'PLUGIN_TARGET="${PLUGIN_TARGET:-/sandbox/.openclaw/extensions/solopreneur-tools}"' in script
+    assert 'install_plugin_file()' in script
+    assert 'openssl base64 -A -in "$source_path" | nemoclaw "$SANDBOX" exec -- node -e' in script
+    assert "process.stdin.on(\"data\"" in script
+    assert 'Buffer.from(b64, "base64")' in script
+    assert '"$encoded"' not in script
+    assert "exec -- sh -lc '\n" not in script
+    assert 'install_plugin_file "$PLUGIN_ROOT/package.json"' in script
+    assert 'install_plugin_file "$PLUGIN_ROOT/openclaw.plugin.json"' in script
+    assert 'install_plugin_file "$PLUGIN_ROOT/dist/index.js"' in script
