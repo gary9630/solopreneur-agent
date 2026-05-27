@@ -10,6 +10,16 @@ Odoo and NemoClaw source code is not vendored. This repository includes integrat
 
 For the full local setup flow, see [Install.md](Install.md).
 
+The GitHub Pages slide deck for the hackathon pitch is [docs/index.html](docs/index.html). Configure Pages from the repository settings:
+
+```text
+Source: Deploy from a branch
+Branch: main
+Folder: /docs
+```
+
+After this branch is merged into `main`, the static deck can be served directly by GitHub Pages without a build step.
+
 Install the Python app dependencies:
 
 ```bash
@@ -165,6 +175,7 @@ Configure it with `AGENT_TELEGRAM_BOT_TOKEN`, `AGENT_TELEGRAM_CHAT_ID`, and `AGE
 - `skills/`: OpenClaw/NemoClaw skill instructions for the deal-to-delivery workflow.
 - `openclaw_plugins/`: the OpenClaw `solopreneur-tools` plugin that exposes the first-class dashboard tools.
 - `workspace/`: local agent context files for sandboxed execution.
+- `docs/index.html`: GitHub Pages-ready HTML slide deck for the hackathon pitch and technical documentation.
 - `docs/demo-script.md`: hackathon demo flow and talking points.
 - `THIRD_PARTY_NOTICES.md`: external dependency and API notices.
 
