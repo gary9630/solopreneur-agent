@@ -1,0 +1,15 @@
+ARG SANDBOX_BASE=ghcr.io/nvidia/nemoclaw/sandbox-base:latest
+FROM ${SANDBOX_BASE}
+
+COPY openclaw_plugins/solopreneur-tools/ /opt/solopreneur-tools/
+
+RUN install -d -m 2770 /opt/solopreneur-tools/node_modules \
+ && ln -s /usr/local/lib/node_modules/openclaw /opt/solopreneur-tools/node_modules/openclaw \
+ && openclaw plugins install /opt/solopreneur-tools --force \
+ && openclaw plugins enable solopreneur-tools \
+ && chown -R sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools \
+ && chown -h sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools/node_modules/openclaw \
+ && openclaw plugins inspect solopreneur-tools --runtime --json > /dev/null \
+ && openclaw doctor --fix --non-interactive
+
+WORKDIR /opt/nemoclaw

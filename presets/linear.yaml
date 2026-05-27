@@ -1,0 +1,19 @@
+preset:
+  name: linear
+  description: "Linear GraphQL API access for engineering issue creation"
+
+network_policies:
+  linear_api:
+    name: linear_api
+    endpoints:
+      - host: api.linear.app
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: POST, path: "/graphql" }
+    binaries:
+      - { path: /usr/local/bin/node }
+      - { path: /usr/bin/node }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/python3 }

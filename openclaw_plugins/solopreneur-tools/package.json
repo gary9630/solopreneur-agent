@@ -1,0 +1,20 @@
+{
+  "name": "solopreneur-tools",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Composable OpenClaw tools for the solopreneur agent demo.",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.5.17"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  }
+}

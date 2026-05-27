@@ -1,3 +1,6 @@
+# macOS local metadata
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -11,6 +14,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!openclaw_plugins/solopreneur-tools/dist/
+!openclaw_plugins/solopreneur-tools/dist/index.js
 downloads/
 eggs/
 .eggs/
@@ -216,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# NVIDIA API Key
+NIM-API-usage.md
+project-*.md
+
+reference-works/

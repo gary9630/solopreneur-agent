@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solopreneur Agent · NVIDIA NemoClaw Hackathon Deck</title>
+  <meta name="description" content="A GitHub Pages slide deck for the Solopreneur Agent NVIDIA NemoClaw hackathon MVP.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2307090b'/%3E%3Cpath d='M14 46V18h8l10 16 10-16h8v28h-8V31L34 46h-4L22 31v15z' fill='%2362f6ff'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090b;
+      --panel: #101419;
+      --panel-2: #151b21;
+      --ink: #eef6f4;
+      --muted: #93a5a2;
+      --line: rgba(164, 255, 235, 0.18);
+      --line-strong: rgba(164, 255, 235, 0.44);
+      --cyan: #62f6ff;
+      --lime: #b8ff5a;
+      --amber: #ffd166;
+      --rose: #ff5e8a;
+      --violet: #9a8cff;
+      --shadow: rgba(0, 0, 0, 0.44);
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(98, 246, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(184, 255, 90, 0.032) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 86%);
+      z-index: 0;
+    }
+
+    #grid-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.72;
+      z-index: 0;
+    }
+
+    .deck {
+      position: relative;
+      z-index: 1;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: clamp(10px, 2.2vw, 30px);
+    }
+
+    .viewport {
+      width: min(100vw - 28px, calc((100vh - 28px) * 16 / 9));
+      aspect-ratio: 16 / 9;
+      position: relative;
+      border: 1px solid var(--line);
+      background: rgba(7, 9, 11, 0.92);
+      overflow: hidden;
+      box-shadow: 0 24px 80px var(--shadow);
+    }
+
+    .slides {
+      height: 100%;
+      display: flex;
+      transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+
+    .slide {
+      flex: 0 0 100%;
+      min-width: 100%;
+      height: 100%;
+      position: relative;
+      padding: clamp(22px, 4.2vw, 68px);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: clamp(12px, 2.2vw, 26px);
+      background:
+        linear-gradient(90deg, rgba(98, 246, 255, 0.05), transparent 22%),
+        linear-gradient(180deg, rgba(184, 255, 90, 0.035), transparent 32%),
+        var(--bg);
+    }
+
+    .slide:nth-child(4n + 2) {
+      background:
+        linear-gradient(90deg, rgba(255, 209, 102, 0.055), transparent 22%),
+        linear-gradient(180deg, rgba(98, 246, 255, 0.035), transparent 34%),
+        var(--bg);
+    }
+
+    .slide:nth-child(4n + 3) {
+      background:
+        linear-gradient(90deg, rgba(154, 140, 255, 0.055), transparent 22%),
+        linear-gradient(180deg, rgba(184, 255, 90, 0.032), transparent 36%),
+        var(--bg);
+    }
+
+    .slide::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--cyan), var(--lime), var(--amber), var(--rose));
+      opacity: 0.82;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.92vw, 13px);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: var(--lime);
+      box-shadow: 18px 0 0 var(--cyan), 36px 0 0 var(--amber);
+      display: inline-block;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 13ch;
+      font-size: clamp(46px, 7.8vw, 112px);
+      line-height: 0.92;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      max-width: 16ch;
+      font-size: clamp(34px, 5.4vw, 78px);
+      line-height: 0.96;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: clamp(18px, 1.9vw, 28px);
+      line-height: 1.1;
+      font-weight: 700;
+    }
+
+    .lead {
+      max-width: 62ch;
+      color: #c9d7d4;
+      font-size: clamp(17px, 1.58vw, 23px);
+      line-height: 1.45;
+      font-weight: 400;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: clamp(12px, 1vw, 15px);
+      line-height: 1.5;
+    }
+
+    .accent {
+      color: var(--cyan);
+    }
+
+    .lime {
+      color: var(--lime);
+    }
+
+    .amber {
+      color: var(--amber);
+    }
+
+    .rose {
+      color: var(--rose);
+    }
+
+    .title-stack {
+      display: grid;
+      gap: clamp(16px, 2vw, 28px);
+      align-content: center;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+      gap: clamp(20px, 4vw, 64px);
+      align-items: center;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(18px, 2.5vw, 36px);
+      align-items: stretch;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(14px, 1.8vw, 24px);
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(12px, 1.4vw, 18px);
+    }
+
+    .card,
+    .terminal,
+    .metric,
+    .diagram-node,
+    .business-card {
+      border: 1px solid var(--line);
+      background: rgba(16, 20, 25, 0.84);
+    }
+
+    .card {
+      min-height: 100%;
+      padding: clamp(16px, 1.8vw, 24px);
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .card strong {
+      color: var(--ink);
+    }
+
+    .card p,
+    .card li {
+      color: #c5d0ce;
+      font-size: clamp(13px, 1.08vw, 16px);
+      line-height: 1.5;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .metric {
+      padding: clamp(14px, 1.7vw, 22px);
+      display: grid;
+      gap: 8px;
+    }
+
+    .metric .num {
+      font-family: var(--mono);
+      font-size: clamp(30px, 4vw, 58px);
+      color: var(--lime);
+      line-height: 1;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.85vw, 12px);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .terminal {
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .terminal-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.84vw, 12px);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    pre {
+      margin: 0;
+      padding: clamp(14px, 1.8vw, 22px);
+      overflow: auto;
+      color: #e8f8f4;
+      font-family: var(--mono);
+      font-size: clamp(11px, 0.98vw, 15px);
+      line-height: 1.52;
+      white-space: pre-wrap;
+    }
+
+    code {
+      font-family: var(--mono);
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      border: 1px solid var(--line-strong);
+      color: #d7fffa;
+      background: rgba(98, 246, 255, 0.07);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.86vw, 12px);
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .chip.green {
+      border-color: rgba(184, 255, 90, 0.46);
+      background: rgba(184, 255, 90, 0.08);
+      color: #ecffce;
+    }
+
+    .chip.amber {
+      border-color: rgba(255, 209, 102, 0.46);
+      background: rgba(255, 209, 102, 0.08);
+      color: #fff0bb;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      background: rgba(21, 27, 33, 0.78);
+      padding: clamp(12px, 1.45vw, 18px);
+      display: grid;
+      gap: 10px;
+      position: relative;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -13px;
+      width: 13px;
+      height: 1px;
+      background: var(--line-strong);
+    }
+
+    .flow-step .idx {
+      color: var(--lime);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .flow-step .name {
+      font-size: clamp(14px, 1.1vw, 17px);
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .flow-step .desc {
+      color: var(--muted);
+      font-size: clamp(11px, 0.9vw, 13px);
+      line-height: 1.4;
+    }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: clamp(14px, 2vw, 24px);
+      align-items: center;
+    }
+
+    .diagram-column {
+      display: grid;
+      gap: 14px;
+    }
+
+    .diagram-node {
+      padding: 16px;
+      min-height: 72px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .diagram-node .node-title {
+      font-weight: 700;
+      font-size: clamp(14px, 1.16vw, 18px);
+    }
+
+    .diagram-node .node-meta {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.8vw, 12px);
+      line-height: 1.4;
+    }
+
+    .bus {
+      border: 1px solid var(--line-strong);
+      background: rgba(98, 246, 255, 0.08);
+      padding: clamp(18px, 2.2vw, 28px);
+      display: grid;
+      gap: 14px;
+      text-align: center;
+      position: relative;
+    }
+
+    .bus::before,
+    .bus::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: clamp(18px, 2vw, 28px);
+      height: 1px;
+      background: var(--line-strong);
+    }
+
+    .bus::before {
+      left: calc(clamp(18px, 2vw, 28px) * -1);
+    }
+
+    .bus::after {
+      right: calc(clamp(18px, 2vw, 28px) * -1);
+    }
+
+    .bus .bus-title {
+      font-size: clamp(24px, 3vw, 42px);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .business-card {
+      width: min(100%, 430px);
+      aspect-ratio: 1.72 / 1;
+      padding: clamp(18px, 2.4vw, 30px);
+      display: grid;
+      grid-template-columns: 0.82fr 1.18fr;
+      gap: 20px;
+      align-items: center;
+      background: #f4f2ea;
+      color: #111713;
+      box-shadow: 12px 12px 0 rgba(98, 246, 255, 0.16);
+    }
+
+    .logo-mark {
+      width: 54px;
+      height: 54px;
+      border: 3px solid #0e716a;
+      display: grid;
+      place-items: center;
+      color: #0e716a;
+      font-weight: 900;
+      font-size: 28px;
+    }
+
+    .card-name {
+      font-size: clamp(26px, 2.8vw, 40px);
+      line-height: 1;
+      font-weight: 800;
+      margin-top: 16px;
+    }
+
+    .card-title,
+    .card-company,
+    .card-lines {
+      font-size: clamp(10px, 0.95vw, 13px);
+      line-height: 1.35;
+    }
+
+    .card-company {
+      font-weight: 800;
+      margin-top: 28px;
+    }
+
+    .card-lines {
+      display: grid;
+      gap: 8px;
+      font-family: var(--mono);
+      color: #1d3732;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      border: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .timeline-item {
+      background: rgba(16, 20, 25, 0.96);
+      padding: clamp(16px, 2vw, 26px);
+      min-height: 150px;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+
+    .timeline-item .phase {
+      color: var(--lime);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.82vw, 12px);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .timeline-item p {
+      color: #c6d5d1;
+      font-size: clamp(13px, 1.02vw, 16px);
+      line-height: 1.45;
+    }
+
+    .footer {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: clamp(10px, 0.85vw, 12px);
+    }
+
+    .progress {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .bar {
+      width: min(24vw, 260px);
+      height: 2px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--cyan);
+      transition: width 300ms ease;
+    }
+
+    .nav {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 4;
+      display: flex;
+      gap: 8px;
+    }
+
+    .nav button {
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line-strong);
+      background: rgba(7, 9, 11, 0.82);
+      color: var(--ink);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .nav button:hover,
+    .nav button:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    .pager {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 4;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      background: rgba(7, 9, 11, 0.82);
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+    }
+
+    .kbd {
+      color: var(--cyan);
+    }
+
+    @media (max-width: 900px) {
+      .slide {
+        padding: 24px;
+      }
+
+      .hero-grid,
+      .split,
+      .architecture {
+        grid-template-columns: 1fr;
+      }
+
+      .grid-3,
+      .grid-4,
+      .timeline {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .flow-step:not(:last-child)::after,
+      .bus::before,
+      .bus::after {
+        display: none;
+      }
+
+      .business-card {
+        max-width: 360px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .grid-3,
+      .grid-4,
+      .flow,
+      .timeline {
+        grid-template-columns: 1fr;
+      }
+
+      .nav,
+      .pager {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slides,
+      .bar span {
+        transition: none;
+      }
+
+      #grid-canvas {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="grid-canvas" aria-hidden="true"></canvas>
+  <main class="deck" aria-label="Solopreneur Agent slide deck">
+    <div class="viewport">
+      <div class="slides" id="slides">
+        <section class="slide" aria-label="Cover">
+          <div class="eyebrow">NVIDIA NemoClaw Hackathon MVP</div>
+          <div class="hero-grid">
+            <div class="title-stack">
+              <h1>Solopreneur Agent</h1>
+              <p class="lead">A governed agent that turns an inbound customer signal into CRM, sales, delivery, and stakeholder follow-up artifacts.</p>
+              <div class="chip-row">
+                <span class="chip green">OpenClaw tools</span>
+                <span class="chip">Odoo CRM/Sales</span>
+                <span class="chip amber">Telegram daily ops</span>
+                <span class="chip">NVIDIA NIM</span>
+              </div>
+            </div>
+            <div class="terminal">
+              <div class="terminal-title"><span>demo contract</span><span>safe live workflow</span></div>
+              <pre>live side effects =
+  host gate: LIVE_WORKFLOW_ENABLED=1
+  tool gate: live=true
+
+never:
+  finalize invoice
+  mark deal won
+
+always:
+  return external_refs
+  write audit trail</pre>
+            </div>
+          </div>
+          <div class="footer">
+            <span>repo: solopreneur-agent</span>
+            <span>01 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Pain">
+          <div class="eyebrow">Problem</div>
+          <div class="title-stack">
+            <h2>One person. Too many systems.</h2>
+            <p class="lead">The solopreneur bottleneck is not ideas. It is the daily handoff from conversation to CRM to quote to delivery work to stakeholder update.</p>
+          </div>
+          <div class="grid-3">
+            <div class="card">
+              <h3>Incoming signal</h3>
+              <p>A message, business card, or customer request arrives while the operator is away from the desk.</p>
+            </div>
+            <div class="card">
+              <h3>Manual translation</h3>
+              <p>Contact, opportunity, quote, invoice draft, tasks, and updates all require repeated data entry.</p>
+            </div>
+            <div class="card">
+              <h3>Trust boundary</h3>
+              <p>Live automation must be useful without silently committing risky business actions.</p>
+            </div>
+          </div>
+          <div class="footer">
+            <span>pain point: sales-to-delivery context switching</span>
+            <span>02 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Product">
+          <div class="eyebrow">Product</div>
+          <div class="split">
+            <div class="title-stack">
+              <h2>AI assistant as a governed operating layer.</h2>
+              <p class="lead">OpenClaw decides the next safe action. The host gateway executes only approved tools. Odoo remains the system of record.</p>
+            </div>
+            <div class="grid-3">
+              <div class="metric">
+                <span class="label">surfaces</span>
+                <span class="num">2</span>
+                <p class="small">OpenClaw dashboard and Telegram ops bot.</p>
+              </div>
+              <div class="metric">
+                <span class="label">tool catalog</span>
+                <span class="num">10</span>
+                <p class="small">First-class solopreneur tools.</p>
+              </div>
+              <div class="metric">
+                <span class="label">test suite</span>
+                <span class="num">170</span>
+                <p class="small">Passing tests plus skipped live checks.</p>
+              </div>
+            </div>
+          </div>
+          <div class="footer">
+            <span>verified: 170 passed, 4 skipped</span>
+            <span>03 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Architecture">
+          <div class="eyebrow">Architecture</div>
+          <div class="architecture">
+            <div class="diagram-column">
+              <div class="diagram-node">
+                <span class="node-title">Telegram Ops Bot</span>
+                <span class="node-meta">photo intake · CRM lookup · quick updates</span>
+              </div>
+              <div class="diagram-node">
+                <span class="node-title">OpenClaw Dashboard</span>
+                <span class="node-meta">natural language planning · tool selection</span>
+              </div>
+            </div>
+            <div class="bus">
+              <span class="bus-title">Host Tool Gateway</span>
+              <span class="small">FastAPI surface with explicit live gates, connector validation, and deterministic fake mode.</span>
+              <div class="chip-row" style="justify-content:center">
+                <span class="chip">http://localhost:8088</span>
+                <span class="chip green">audit aware</span>
+              </div>
+            </div>
+            <div class="diagram-column">
+              <div class="diagram-node">
+                <span class="node-title">NVIDIA NIM</span>
+                <span class="node-meta">deal extraction · business-card vision</span>
+              </div>
+              <div class="diagram-node">
+                <span class="node-title">Odoo / Linear / GitHub</span>
+                <span class="node-meta">CRM · Sales · delivery tracking · traceability</span>
+              </div>
+            </div>
+          </div>
+          <div class="footer">
+            <span>NemoClaw sandbox policies constrain network egress</span>
+            <span>04 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="OpenClaw tools">
+          <div class="eyebrow">OpenClaw Plugin</div>
+          <div class="title-stack">
+            <h2>First-class tools instead of brittle shell prompts.</h2>
+            <p class="lead">The `solopreneur-tools` plugin exposes business actions directly to OpenClaw, while `SKILL.md` teaches when to call each tool.</p>
+          </div>
+          <div class="grid-4">
+            <div class="card"><h3>Prepare</h3><p><code>deal_prepare</code><br><code>crm_lookup</code></p></div>
+            <div class="card"><h3>Odoo</h3><p><code>odoo_upsert_contact</code><br><code>odoo_create_crm_lead</code><br><code>odoo_create_sale_order</code><br><code>odoo_create_draft_invoice</code></p></div>
+            <div class="card"><h3>Daily Ops</h3><p><code>business_card_capture</code><br><code>notify_stakeholder</code></p></div>
+            <div class="card"><h3>Delivery</h3><p><code>delivery_create_tasks</code><br><code>odoo_create_deal_artifacts</code> fallback</p></div>
+          </div>
+          <div class="footer">
+            <span>toolSearch remains enabled for compact catalogs</span>
+            <span>05 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Safety gates">
+          <div class="eyebrow">Safety Contract</div>
+          <div class="split">
+            <div class="title-stack">
+              <h2>Live mode is a two-key turn.</h2>
+              <p class="lead">Every live write requires operator approval in the prompt and host-level opt-in in the process environment.</p>
+            </div>
+            <div class="terminal">
+              <div class="terminal-title"><span>live gate</span><span>operator + host</span></div>
+              <pre># host-side process
+LIVE_WORKFLOW_ENABLED=1 make tool-gateway
+
+# tool argument
+{
+  "run_id": "acme-live-001",
+  "message": "Create Odoo draft artifacts...",
+  "live": true
+}
+
+# invariant
+invoice.state == draft
+deal.stage != won</pre>
+            </div>
+          </div>
+          <div class="footer">
+            <span>default behavior: fake-only deterministic demo</span>
+            <span>06 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Odoo workflow">
+          <div class="eyebrow">Odoo Workflow</div>
+          <div class="title-stack">
+            <h2>From deal brief to draft business artifacts.</h2>
+            <p class="lead">The Odoo connector creates the useful work, but stops before irreversible business state changes.</p>
+          </div>
+          <div class="flow">
+            <div class="flow-step"><span class="idx">01</span><span class="name">Contact</span><span class="desc">Create or update `res.partner`.</span></div>
+            <div class="flow-step"><span class="idx">02</span><span class="name">CRM Lead</span><span class="desc">Create `crm.lead` opportunity.</span></div>
+            <div class="flow-step"><span class="idx">03</span><span class="name">Quotation</span><span class="desc">Create `sale.order` draft quote.</span></div>
+            <div class="flow-step"><span class="idx">04</span><span class="name">Draft Invoice</span><span class="desc">Create `account.move` draft only.</span></div>
+            <div class="flow-step"><span class="idx">05</span><span class="name">Audit</span><span class="desc">Write context and audit refs.</span></div>
+          </div>
+          <div class="footer">
+            <span>Odoo 19 addon: deal_to_delivery_agent</span>
+            <span>07 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Business card demo">
+          <div class="eyebrow">Telegram Daily-Life Demo</div>
+          <div class="hero-grid">
+            <div class="business-card" aria-label="Sample business card">
+              <div>
+                <div class="logo-mark">A</div>
+                <div class="card-name">Ava Lin</div>
+                <div class="card-title">Operations Consultant</div>
+                <div class="card-company">Northstar Automation Lab</div>
+              </div>
+              <div class="card-lines">
+                <span>ava.lin@example.com</span>
+                <span>+1 (555) 018-4421</span>
+                <span>www.example.com/northstar</span>
+                <span>Austin, TX</span>
+              </div>
+            </div>
+            <div class="title-stack">
+              <h2>Take a photo. Create CRM context.</h2>
+              <p class="lead">The Telegram ops bot reads a business-card image, sends it through NIM vision, then creates an Odoo contact and CRM opportunity.</p>
+              <div class="terminal">
+                <div class="terminal-title"><span>observed live result</span><span>telegram</span></div>
+                <pre>Business card captured: Ava Lin
+ava.lin@example.com
+Refs: odoo:14, odoo:9</pre>
+              </div>
+            </div>
+          </div>
+          <div class="footer">
+            <span>solopreneur pain point: capture contacts outside the office</span>
+            <span>08 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Setup commands">
+          <div class="eyebrow">Documentation · Setup</div>
+          <div class="split">
+            <div class="terminal">
+              <div class="terminal-title"><span>local runtime</span><span>commands</span></div>
+              <pre>cp .env.example .env
+
+cd agent_app
+uv sync
+uv run pytest -q
+
+make odoo-up
+make tool-gateway
+make telegram-ops</pre>
+            </div>
+            <div class="terminal">
+              <div class="terminal-title"><span>nemoclaw / openclaw</span><span>commands</span></div>
+              <pre>make nemoclaw-solopreneur-sandbox
+make nemoclaw-policies
+make nemoclaw-skills
+make nemoclaw-workspace
+
+make nemoclaw-dashboard-restart
+nemoclaw deal-demo dashboard-url</pre>
+            </div>
+          </div>
+          <div class="footer">
+            <span>full guide: Install.md</span>
+            <span>09 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Live demo commands">
+          <div class="eyebrow">Documentation · Live Run</div>
+          <div class="title-stack">
+            <h2>Judge-facing live sequence.</h2>
+            <p class="lead">Start with Odoo-only live artifacts, then expand into delivery tracking and stakeholder notification.</p>
+          </div>
+          <div class="timeline">
+            <div class="timeline-item"><span class="phase">Step 1</span><h3>Approve live</h3><p>`LIVE_WORKFLOW_ENABLED=1 make tool-gateway` and prompt explicitly says live mode is approved.</p></div>
+            <div class="timeline-item"><span class="phase">Step 2</span><h3>Prepare deal</h3><p>`deal_prepare` extracts customer, contact, scope, budget, timeline, quote draft.</p></div>
+            <div class="timeline-item"><span class="phase">Step 3</span><h3>Create drafts</h3><p>Call atomic Odoo tools for contact, CRM lead, quotation, and draft invoice.</p></div>
+            <div class="timeline-item"><span class="phase">Step 4</span><h3>Show evidence</h3><p>Open Odoo Contacts, CRM, Sales, Invoicing, Deal Contexts, and Audit Logs.</p></div>
+          </div>
+          <div class="footer">
+            <span>atomic tools show agent reasoning better than one-shot composite calls</span>
+            <span>10 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Verification">
+          <div class="eyebrow">Verification</div>
+          <div class="split">
+            <div class="title-stack">
+              <h2>Built to survive demo day.</h2>
+              <p class="lead">The repo keeps fake mode, live gates, connector tests, Odoo addon tests, NemoClaw asset tests, and tool gateway tests in one loop.</p>
+            </div>
+            <div class="terminal">
+              <div class="terminal-title"><span>latest full suite</span><span>pytest</span></div>
+              <pre>cd agent_app
+uv run pytest -q
+
+ssss....................................................................
+........................................................................
+..............................
+
+170 passed, 4 skipped</pre>
+            </div>
+          </div>
+          <div class="footer">
+            <span>tests cover HTTP connector payloads, OpenClaw plugin assets, Odoo addon structure</span>
+            <span>11 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Deploy">
+          <div class="eyebrow">GitHub Pages</div>
+          <div class="split">
+            <div class="terminal">
+              <div class="terminal-title"><span>deploy path</span><span>static</span></div>
+              <pre># this file
+docs/index.html
+
+# GitHub settings
+Pages -> Build and deployment
+Source: Deploy from a branch
+Branch: main
+Folder: /docs</pre>
+            </div>
+            <div class="card">
+              <h3>Why single-file?</h3>
+              <ul>
+                <li>No build system.</li>
+                <li>No CDN dependency.</li>
+                <li>No local machine paths.</li>
+                <li>Easy to inspect in a PR.</li>
+                <li>Works by opening the file directly.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer">
+            <span>documentation and pitch surface share the same URL</span>
+            <span>12 / 13</span>
+          </div>
+        </section>
+
+        <section class="slide" aria-label="Why it wins">
+          <div class="eyebrow">Judging Story</div>
+          <div class="title-stack">
+            <h2>Not a chatbot. A governed business operator.</h2>
+            <p class="lead">The demo hits a daily solopreneur pain point, shows real live system writes, keeps high-impact actions gated, and uses NemoClaw/OpenClaw as the agent runtime instead of a thin API wrapper.</p>
+          </div>
+          <div class="grid-3">
+            <div class="card"><h3>Daily-life magic</h3><p>Send a business card photo from Telegram; see Odoo contact and opportunity appear.</p></div>
+            <div class="card"><h3>Business depth</h3><p>CRM, Sales, draft invoice, delivery tracking, stakeholder update, and audit trail.</p></div>
+            <div class="card"><h3>Safety story</h3><p>Human opt-in, host gate, draft-only invoices, no deal-won mutation, auditable refs.</p></div>
+          </div>
+          <div class="footer">
+            <span>Solopreneur Agent · NemoClaw Hackathon MVP</span>
+            <span>13 / 13</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div class="pager" aria-live="polite">
+    <span id="page-current">01</span> / <span id="page-total">13</span>
+    <span class="kbd"> · ← →</span>
+  </div>
+  <div class="nav" aria-label="Slide navigation">
+    <button type="button" id="prev" aria-label="Previous slide">‹</button>
+    <button type="button" id="next" aria-label="Next slide">›</button>
+  </div>
+
+  <script>
+    const slidesEl = document.getElementById("slides");
+    const slideEls = Array.from(document.querySelectorAll(".slide"));
+    const currentEl = document.getElementById("page-current");
+    const totalEl = document.getElementById("page-total");
+    const progressBar = document.createElement("span");
+    let current = 0;
+    let touchStartX = 0;
+    let wheelLock = false;
+
+    totalEl.textContent = String(slideEls.length).padStart(2, "0");
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function goTo(index) {
+      current = clamp(index, 0, slideEls.length - 1);
+      slidesEl.style.transform = `translate3d(${-current * 100}%, 0, 0)`;
+      currentEl.textContent = String(current + 1).padStart(2, "0");
+      document.title = `${slideEls[current].getAttribute("aria-label")} · Solopreneur Agent`;
+      const hash = `s${String(current + 1).padStart(2, "0")}`;
+      if (location.hash !== `#${hash}`) {
+        history.replaceState(null, "", `#${hash}`);
+      }
+    }
+
+    document.getElementById("prev").addEventListener("click", () => goTo(current - 1));
+    document.getElementById("next").addEventListener("click", () => goTo(current + 1));
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        goTo(current + 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        goTo(current - 1);
+      }
+      if (event.key === "Home") goTo(0);
+      if (event.key === "End") goTo(slideEls.length - 1);
+    });
+
+    document.addEventListener("wheel", (event) => {
+      if (wheelLock || Math.abs(event.deltaY) < 28) return;
+      wheelLock = true;
+      goTo(current + (event.deltaY > 0 ? 1 : -1));
+      window.setTimeout(() => {
+        wheelLock = false;
+      }, 520);
+    }, { passive: true });
+
+    document.addEventListener("touchstart", (event) => {
+      touchStartX = event.changedTouches[0].clientX;
+    }, { passive: true });
+
+    document.addEventListener("touchend", (event) => {
+      const delta = event.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(delta) > 42) goTo(current + (delta < 0 ? 1 : -1));
+    }, { passive: true });
+
+    const initial = /^#s(\d+)$/.exec(location.hash);
+    goTo(initial ? Number(initial[1]) - 1 : 0);
+
+    window.addEventListener("hashchange", () => {
+      const match = /^#s(\d+)$/.exec(location.hash);
+      if (match) goTo(Number(match[1]) - 1);
+    });
+
+    const canvas = document.getElementById("grid-canvas");
+    const context = canvas.getContext("2d");
+    let raf = 0;
+    let tick = 0;
+
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(window.innerWidth * ratio);
+      canvas.height = Math.floor(window.innerHeight * ratio);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function drawCanvas() {
+      tick += 0.006;
+      context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      context.lineWidth = 1;
+      for (let i = 0; i < 24; i += 1) {
+        const y = (i * 48 + tick * 900) % window.innerHeight;
+        const alpha = 0.035 + (i % 5) * 0.012;
+        context.strokeStyle = `rgba(98, 246, 255, ${alpha})`;
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(window.innerWidth, y + Math.sin(tick + i) * 16);
+        context.stroke();
+      }
+      for (let i = 0; i < 14; i += 1) {
+        const x = (i * 120 + tick * 420) % window.innerWidth;
+        context.fillStyle = i % 3 === 0 ? "rgba(184,255,90,0.22)" : "rgba(98,246,255,0.18)";
+        context.fillRect(x, (i * 73) % window.innerHeight, 2, 18);
+      }
+      raf = window.requestAnimationFrame(drawCanvas);
+    }
+
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      resizeCanvas();
+      drawCanvas();
+      window.addEventListener("resize", resizeCanvas);
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (raf) window.cancelAnimationFrame(raf);
+    });
+  </script>
+</body>
+</html>

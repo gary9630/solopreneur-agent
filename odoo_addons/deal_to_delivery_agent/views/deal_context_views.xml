@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_deal_agent_context_list" model="ir.ui.view">
+        <field name="name">deal.agent.deal.context.list</field>
+        <field name="model">deal.agent.deal.context</field>
+        <field name="arch" type="xml">
+            <list string="Agent Deal Contexts">
+                <field name="name"/>
+                <field name="run_id"/>
+                <field name="customer_name"/>
+                <field name="state"/>
+                <field name="crm_lead_id"/>
+                <field name="sale_order_id"/>
+                <field name="project_id"/>
+                <field name="invoice_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_deal_agent_context_form" model="ir.ui.view">
+        <field name="name">deal.agent.deal.context.form</field>
+        <field name="model">deal.agent.deal.context</field>
+        <field name="arch" type="xml">
+            <form string="Agent Deal Context">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="run_id"/>
+                            <field name="customer_name"/>
+                            <field name="contact_email"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="crm_lead_id"/>
+                            <field name="sale_order_id"/>
+                            <field name="project_id"/>
+                            <field name="invoice_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Customer Brief">
+                            <field name="source_message"/>
+                        </page>
+                        <page string="Agent Audit">
+                            <field name="audit_log_ids">
+                                <list create="false" edit="false">
+                                    <field name="created_at"/>
+                                    <field name="step_name"/>
+                                    <field name="service"/>
+                                    <field name="state_before"/>
+                                    <field name="state_after"/>
+                                    <field name="external_ref"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_deal_agent_context_search" model="ir.ui.view">
+        <field name="name">deal.agent.deal.context.search</field>
+        <field name="model">deal.agent.deal.context</field>
+        <field name="arch" type="xml">
+            <search string="Agent Deal Contexts">
+                <field name="name"/>
+                <field name="run_id"/>
+                <field name="customer_name"/>
+                <filter name="state_received" string="Received" domain="[('state', '=', 'received')]"/>
+                <filter name="state_completed" string="Completed" domain="[('state', '=', 'completed')]"/>
+                <filter name="state_failed" string="Failed" domain="[('state', '=', 'failed')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_deal_agent_contexts" model="ir.actions.act_window">
+        <field name="name">Agent Deal Contexts</field>
+        <field name="res_model">deal.agent.deal.context</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_deal_agent_context_search"/>
+    </record>
+</odoo>
