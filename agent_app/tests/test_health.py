@@ -7,6 +7,7 @@ from deal_agent.config import Settings
 from deal_agent.main import app
 
 AGENT_APP_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_health_endpoint_returns_ok():
@@ -31,4 +32,4 @@ def test_settings_env_file_is_project_root_relative():
     env_file = Path(Settings.model_config["env_file"])
 
     assert env_file.is_absolute()
-    assert env_file == AGENT_APP_ROOT / ".env"
+    assert env_file == REPO_ROOT / ".env"

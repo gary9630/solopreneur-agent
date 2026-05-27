@@ -46,9 +46,45 @@ Install the local deal-to-delivery skill:
 bash scripts/install_nemoclaw_skills.sh
 ```
 
+Start the OpenClaw dashboard forward:
+
+```bash
+make nemoclaw-dashboard
+```
+
+Keep that terminal open, then fetch the tokenized dashboard URL from another terminal:
+
+```bash
+nemoclaw deal-demo dashboard-url
+```
+
 Show the guardrails in `skills/deal-to-delivery/SKILL.md`, especially invoice, deal acceptance, audit logging, and tool-gateway boundaries.
 
-## 5. Show Artifacts
+## 5. Run The Full-Live Tool Gateway
+
+Start the gateway:
+
+```bash
+make tool-gateway
+```
+
+In OpenClaw, call the allowed gateway route:
+
+```text
+POST http://host.openshell.internal:8088/tools/deal-to-delivery/run
+```
+
+For true external side effects, set `LIVE_WORKFLOW_ENABLED=1` in the host environment and send `live=true` in the request. Otherwise the route returns a dry-run response.
+
+Start the Agent App Telegram bot for the solopreneur daily-life demo:
+
+```bash
+make telegram-ops
+```
+
+Use `AGENT_TELEGRAM_BOT_TOKEN`, `AGENT_TELEGRAM_CHAT_ID`, and `AGENT_TELEGRAM_ALLOWED_USER_IDS` for the second bot. Send it a business-card photo to create or update Odoo CRM data, then ask it for a CRM contact lookup.
+
+## 6. Show Artifacts
 
 Walk through the generated and integration assets:
 

@@ -2,11 +2,26 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
+from typing import Any, Protocol
 
+from pydantic import TypeAdapter, ValidationError
+
+from deal_agent.nim_client import NimClientError
 from deal_agent.models import DeliveryIssue, IntakeSummary, QuoteDraft, QuoteLineItem, WorkflowRun
 
 COMMON_ACRONYMS = frozenset({"AI", "API", "CLI", "CRM", "ERP", "MVP", "NIM", "POC", "UI", "UX"})
 CUSTOMER_PATTERN = r"(?P<customer>[A-Z][A-Z0-9&.-]{1,})"
+
+
+class JsonChatClient(Protocol):
+    def chat_json(self, system_prompt: str, user_prompt: str) -> Any:
+        ...
+
+
+class ModelServiceError(Exception):
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class FakeModelServices:
@@ -98,6 +113,51 @@ class FakeModelServices:
         )
 
 
+class NimModelServices:
+    def __init__(self, client: JsonChatClient) -> None:
+        self._client = client
+
+    def extract_intake(self, message: str) -> IntakeSummary:
+        payload = self._chat_json(
+            "Return JSON only. Extract an SME deal intake into fields accepted by IntakeSummary: "
+            "customer_name, contact_name, contact_email, problem_statement, scope_items, goals, "
+            "assumptions, risks, estimated_budget, timeline, confidence.",
+            message,
+        )
+        return _validate_model(IntakeSummary, payload, "NIM intake output")
+
+    def draft_quote(self, summary: IntakeSummary) -> QuoteDraft:
+        payload = self._chat_json(
+            "Return JSON only. Draft a quote with currency, line_items, subtotal, tax, total, notes. "
+            "Each line item needs description, quantity, unit_price. Never create a finalized invoice.",
+            summary.model_dump_json(exclude_none=True),
+        )
+        return _validate_model(QuoteDraft, payload, "NIM quote output")
+
+    def break_down_issues(self, summary: IntakeSummary) -> list[DeliveryIssue]:
+        payload = self._chat_json(
+            "Return JSON only. Break the delivery work into an array of Linear issue objects. "
+            "Each object needs title, description, labels, priority, assignee_email, estimate_points.",
+            summary.model_dump_json(exclude_none=True),
+        )
+        return _validate_delivery_issues(payload)
+
+    def compose_notification(self, run: WorkflowRun) -> str:
+        payload = self._chat_json(
+            "Return JSON only with one key, message. Compose a concise Telegram status update for this run.",
+            run.model_dump_json(exclude_none=True),
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("message"), str):
+            raise ModelServiceError("NIM notification output was invalid", retryable=False)
+        return payload["message"].strip()
+
+    def _chat_json(self, system_prompt: str, user_prompt: str) -> Any:
+        try:
+            return self._client.chat_json(system_prompt, user_prompt)
+        except NimClientError as exc:
+            raise ModelServiceError(str(exc), retryable=exc.retryable) from exc
+
+
 def _extract_customer_name(message: str) -> str | None:
     preferred_patterns = [
         rf"\bfor\s+{CUSTOMER_PATTERN}\b",
@@ -125,3 +185,17 @@ def _customer_from_run(run: WorkflowRun) -> str:
 
 def _format_decimal(value: Decimal) -> str:
     return format(value.normalize(), "f")
+
+
+def _validate_model(model_type, payload: Any, label: str):
+    try:
+        return model_type.model_validate(payload)
+    except ValidationError as exc:
+        raise ModelServiceError(f"{label} failed validation", retryable=False) from exc
+
+
+def _validate_delivery_issues(payload: Any) -> list[DeliveryIssue]:
+    try:
+        return TypeAdapter(list[DeliveryIssue]).validate_python(payload)
+    except ValidationError as exc:
+        raise ModelServiceError("NIM issue output failed validation", retryable=False) from exc

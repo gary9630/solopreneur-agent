@@ -6,7 +6,7 @@ import pytest
 import deal_agent.nim_client as nim_client
 from deal_agent.models import ExternalRef, WorkflowRun
 from deal_agent.nim_client import NimChatClient
-from deal_agent.services.model_services import FakeModelServices
+from deal_agent.services.model_services import FakeModelServices, ModelServiceError, NimModelServices
 
 
 def test_fake_model_services_extracts_intake():
@@ -75,6 +75,96 @@ def test_fake_model_services_composes_run_notification():
     assert "USD 4500" in message
     assert "odoo:odoo-quote-1" in message
     assert "linear:LIN-1" in message
+
+
+class StubNimJsonClient:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def chat_json(self, system_prompt: str, user_prompt: str):
+        self.calls.append((system_prompt, user_prompt))
+        return self.responses.pop(0)
+
+
+def test_nim_model_services_extracts_intake_from_structured_json():
+    client = StubNimJsonClient(
+        [
+            {
+                "customer_name": "ACME",
+                "contact_name": "Ada Lovelace",
+                "contact_email": "ada@example.com",
+                "problem_statement": "Manual deal handoff is slow.",
+                "scope_items": ["Create Odoo CRM lead"],
+                "goals": ["Shorten response time"],
+                "assumptions": ["Budget is draft"],
+                "risks": [],
+                "estimated_budget": "8000",
+                "timeline": "two weeks",
+                "confidence": 0.88,
+            }
+        ],
+    )
+    services = NimModelServices(client)
+
+    summary = services.extract_intake("ACME needs a two-week Odoo automation package.")
+
+    assert summary.customer_name == "ACME"
+    assert summary.estimated_budget == Decimal("8000")
+    assert "Return JSON only" in client.calls[0][0]
+
+
+def test_nim_model_services_drafts_quote_and_issues_from_structured_json():
+    client = StubNimJsonClient(
+        [
+            {
+                "currency": "USD",
+                "line_items": [
+                    {"description": "CRM automation", "quantity": "1", "unit_price": "8000"}
+                ],
+                "subtotal": "8000",
+                "tax": "0",
+                "total": "8000",
+                "notes": "Draft only.",
+            },
+            [
+                {
+                    "title": "Configure CRM lead intake",
+                    "description": "Set up Odoo CRM intake workflow.",
+                    "labels": ["crm", "mvp"],
+                    "priority": "high",
+                }
+            ],
+        ],
+    )
+    services = NimModelServices(client)
+    summary = FakeModelServices().extract_intake("ACME needs Odoo automation.")
+
+    quote = services.draft_quote(summary)
+    issues = services.break_down_issues(summary)
+
+    assert quote.total == Decimal("8000")
+    assert issues[0].title == "Configure CRM lead intake"
+
+
+def test_nim_model_services_composes_notification_from_json_text():
+    client = StubNimJsonClient([{"message": "ACME run run_1 is ready."}])
+    services = NimModelServices(client)
+    run = WorkflowRun.from_brief("run_1", "ACME needs Odoo automation.")
+
+    message = services.compose_notification(run)
+
+    assert message == "ACME run run_1 is ready."
+
+
+def test_nim_model_services_wraps_validation_errors_as_terminal():
+    client = StubNimJsonClient([{"customer_name": "ACME"}])
+    services = NimModelServices(client)
+
+    with pytest.raises(ModelServiceError) as exc_info:
+        services.extract_intake("ACME needs Odoo automation.")
+
+    assert exc_info.value.retryable is False
 
 
 def test_nim_chat_client_posts_completion_and_parses_json():

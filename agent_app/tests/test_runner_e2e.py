@@ -7,7 +7,7 @@ from deal_agent.connectors.fakes import (
     FakeOdooConnector,
     FakeTelegramConnector,
 )
-from deal_agent.models import WorkflowState
+from deal_agent.models import ExternalRef, WorkflowState
 from deal_agent.runner import DealWorkflowRunner, WorkflowRunFailed
 from deal_agent.services.model_services import FakeModelServices
 
@@ -54,6 +54,52 @@ def test_runner_completes_happy_path_with_fakes():
     linear_external_ids = [ref.external_id for ref in run.external_refs if ref.system == "linear"]
     github_ref = next(ref for ref in run.external_refs if ref.system == "github")
     assert github_ref.metadata["linear_external_ids"] == linear_external_ids
+
+
+class AuditedFakeOdooConnector(FakeOdooConnector):
+    def __init__(self):
+        super().__init__()
+        self.context_payloads = []
+        self.audit_payloads = []
+
+    def write_deal_context(self, **payload):
+        self.context_payloads.append(payload)
+        return ExternalRef(
+            system="odoo",
+            external_id="501",
+            metadata={"kind": "deal_context", "model": "deal.agent.deal.context", "run_id": payload["run_id"]},
+        )
+
+    def write_audit_log(self, **payload):
+        self.audit_payloads.append(payload)
+        return ExternalRef(
+            system="odoo",
+            external_id="502",
+            metadata={"kind": "audit_log", "model": "deal.agent.audit.log", "run_id": payload["run_id"]},
+        )
+
+
+def test_runner_writes_optional_odoo_deal_context_and_audit_records():
+    odoo = AuditedFakeOdooConnector()
+    runner = DealWorkflowRunner(
+        models=FakeModelServices(),
+        odoo=odoo,
+        linear=FakeLinearConnector(),
+        github=FakeGitHubConnector(),
+        telegram=FakeTelegramConnector(),
+    )
+
+    run = runner.run("run_audit", "ACME needs a two-week Odoo automation prototype.")
+
+    assert run.state is WorkflowState.COMPLETED
+    assert odoo.context_payloads[0]["run_id"] == "run_audit"
+    assert odoo.context_payloads[0]["customer_name"] == "ACME"
+    assert odoo.context_payloads[0]["state"] == "completed"
+    assert odoo.audit_payloads[0]["step_name"] == "workflow_complete"
+    assert [(ref.system, ref.metadata["kind"]) for ref in run.external_refs][-2:] == [
+        ("odoo", "deal_context"),
+        ("odoo", "audit_log"),
+    ]
 
 
 class QuoteFailureModelServices(FakeModelServices):

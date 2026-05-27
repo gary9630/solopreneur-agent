@@ -59,7 +59,49 @@ bash scripts/apply_nemoclaw_policies.sh
 bash scripts/install_nemoclaw_skills.sh
 ```
 
+Start the OpenClaw dashboard forward when you want to use the browser UI:
+
+```bash
+make nemoclaw-dashboard
+```
+
+Keep that terminal open, then fetch the tokenized dashboard URL in another terminal:
+
+```bash
+nemoclaw deal-demo dashboard-url
+```
+
 The scripts use `SANDBOX=deal-demo` by default. Copy `.env.example` to `.env` only for local live integration trials, and keep real API keys out of git.
+
+## Full-Live Tool Gateway
+
+Start the local execution gateway on port `8088`:
+
+```bash
+make tool-gateway
+```
+
+OpenClaw should call the policy-approved route:
+
+```text
+POST http://host.openshell.internal:8088/tools/deal-to-delivery/run
+```
+
+Live side effects require both host opt-in and request opt-in:
+
+```bash
+LIVE_WORKFLOW_ENABLED=1
+```
+
+and request body `live=true`. Without both, `/tools/deal-to-delivery/run` stays in dry-run mode.
+
+Start the second Telegram bot for business-card intake and CRM lookup:
+
+```bash
+make telegram-ops
+```
+
+Configure it with `AGENT_TELEGRAM_BOT_TOKEN`, `AGENT_TELEGRAM_CHAT_ID`, and `AGENT_TELEGRAM_ALLOWED_USER_IDS`.
 
 ## Project Layout
 

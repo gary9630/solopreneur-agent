@@ -10,6 +10,7 @@ from deal_agent.connectors.linear import LinearHttpConnector
 from deal_agent.connectors.odoo import OdooHttpConnector
 from deal_agent.connectors.telegram import TelegramHttpConnector
 from deal_agent.models import DealBrief, DeliveryIssue, ExternalRef, IntakeSummary, QuoteDraft
+from deal_agent.tool_models import BusinessCardContact
 
 
 def sample_summary() -> IntakeSummary:
@@ -222,6 +223,176 @@ def test_odoo_http_connector_caches_successful_refs_and_requires_partner_for_lat
     assert first_quote == second_quote
     assert first_invoice == second_invoice
     assert request_count == 4
+
+
+def test_odoo_http_connector_upserts_existing_business_card_contact():
+    seen: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        seen.append((request.url.path, body))
+        if request.url.path == "/json/2/res.partner/search_read":
+            assert body["domain"] == [["email", "=", "ada@example.com"]]
+            return httpx.Response(200, json=[{"id": 77, "name": "Ada Old"}])
+        if request.url.path == "/json/2/res.partner/write":
+            assert body == {
+                "ids": [77],
+                "values": {
+                    "name": "Ada Lovelace",
+                    "email": "ada@example.com",
+                    "phone": "+1 555 0100",
+                    "website": "https://example.com",
+                    "function": "Founder",
+                    "company_name": "Analytical Engines LLC",
+                    "comment": "Business card captured by deal-agent run card_1",
+                },
+            }
+            return httpx.Response(200, json=True)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    connector = OdooHttpConnector(
+        base_url="https://odoo.test/",
+        token="odoo-secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    ref = connector.upsert_contact_from_business_card(
+        "card_1",
+        BusinessCardContact(
+            name="Ada Lovelace",
+            company="Analytical Engines LLC",
+            title="Founder",
+            email="ada@example.com",
+            phone="+1 555 0100",
+            website="https://example.com",
+        ),
+    )
+
+    assert [path for path, _ in seen] == [
+        "/json/2/res.partner/search_read",
+        "/json/2/res.partner/write",
+    ]
+    assert ref == ExternalRef(
+        system="odoo",
+        external_id="77",
+        metadata={"kind": "contact", "model": "res.partner", "run_id": "card_1", "action": "updated"},
+    )
+
+
+def test_odoo_http_connector_creates_business_card_contact_and_lead():
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        if request.url.path == "/json/2/res.partner/search_read":
+            return httpx.Response(200, json=[])
+        if request.url.path == "/json/2/res.partner/create":
+            return httpx.Response(200, json=88)
+        if request.url.path == "/json/2/crm.lead/create":
+            body = json.loads(request.content.decode("utf-8"))
+            assert body["partner_id"] == 88
+            assert body["contact_name"] == "Ada Lovelace"
+            assert body["email_from"] == "ada@example.com"
+            return httpx.Response(200, json=99)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    connector = OdooHttpConnector(
+        base_url="https://odoo.test/",
+        token="odoo-secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    contact = BusinessCardContact(
+        name="Ada Lovelace",
+        company="Analytical Engines LLC",
+        title="Founder",
+        email="ada@example.com",
+    )
+
+    contact_ref = connector.upsert_contact_from_business_card("card_2", contact)
+    lead_ref = connector.create_crm_lead_for_contact("card_2", contact_ref, contact)
+
+    assert seen_paths == [
+        "/json/2/res.partner/search_read",
+        "/json/2/res.partner/create",
+        "/json/2/crm.lead/create",
+    ]
+    assert contact_ref.metadata["action"] == "created"
+    assert lead_ref == ExternalRef(
+        system="odoo",
+        external_id="99",
+        metadata={"kind": "lead", "model": "crm.lead", "run_id": "card_2"},
+    )
+
+
+def test_odoo_http_connector_looks_up_contacts_and_leads():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/json/2/res.partner/search_read":
+            body = json.loads(request.content.decode("utf-8"))
+            assert "mobile" not in body["fields"]
+            return httpx.Response(200, json=[{"id": 77, "name": "Ada Lovelace", "email": "ada@example.com"}])
+        if request.url.path == "/json/2/crm.lead/search_read":
+            return httpx.Response(200, json=[{"id": 99, "name": "ACME CRM", "email_from": "ada@example.com"}])
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    connector = OdooHttpConnector(
+        base_url="https://odoo.test/",
+        token="odoo-secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = connector.lookup_crm("Ada", limit=3)
+
+    assert result.query == "Ada"
+    assert result.contacts == [{"id": 77, "name": "Ada Lovelace", "email": "ada@example.com"}]
+    assert result.leads == [{"id": 99, "name": "ACME CRM", "email_from": "ada@example.com"}]
+
+
+def test_odoo_http_connector_writes_deal_context_and_audit_log():
+    seen: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        seen.append((request.url.path, body))
+        if request.url.path == "/json/2/deal.agent.deal.context/create":
+            return httpx.Response(200, json=501)
+        if request.url.path == "/json/2/deal.agent.audit.log/create":
+            assert body["deal_context_id"] == 501
+            return httpx.Response(200, json=502)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    connector = OdooHttpConnector(
+        base_url="https://odoo.test/",
+        token="odoo-secret",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    context_ref = connector.write_deal_context(
+        run_id="run_1",
+        customer_name="ACME",
+        contact_email="ada@example.com",
+        source_message="ACME needs Odoo automation.",
+        state="quoted",
+        crm_lead_id=101,
+        sale_order_id=202,
+        invoice_id=303,
+    )
+    audit_ref = connector.write_audit_log(
+        run_id="run_1",
+        step_name="odoo_lead",
+        state_before="NEW",
+        state_after="ODOO_LEAD_CREATED",
+        service="odoo",
+        external_ref="101",
+        payload_summary="Created CRM lead",
+        deal_context_id=int(context_ref.external_id),
+    )
+
+    assert [path for path, _ in seen] == [
+        "/json/2/deal.agent.deal.context/create",
+        "/json/2/deal.agent.audit.log/create",
+    ]
+    assert context_ref.metadata["kind"] == "deal_context"
+    assert audit_ref.metadata["kind"] == "audit_log"
 
 
 def test_linear_http_connector_bootstraps_project_and_issues_with_graphql():

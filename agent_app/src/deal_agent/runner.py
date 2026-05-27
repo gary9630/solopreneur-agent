@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import NoReturn, Protocol
 
 from deal_agent.connectors.base import GitHubConnector, LinearConnector, OdooConnector, TelegramConnector
-from deal_agent.models import DeliveryIssue, IntakeSummary, QuoteDraft, WorkflowRun, WorkflowState
+from deal_agent.models import DeliveryIssue, ExternalRef, IntakeSummary, QuoteDraft, WorkflowRun, WorkflowState
 from deal_agent.workflow import advance, record_step
 
 
@@ -164,12 +164,61 @@ class DealWorkflowRunner:
             {"external_id": telegram_ref.external_id},
         )
 
+        try:
+            odoo_trace_refs = self._write_optional_odoo_trace(run)
+        except Exception as exc:
+            self._fail(run, "odoo_audit", exc)
+        if odoo_trace_refs:
+            run.external_refs = [*run.external_refs, *odoo_trace_refs]
+            run = record_step(
+                run,
+                "odoo_audit",
+                {"external_ids": [ref.external_id for ref in odoo_trace_refs]},
+            )
+
         return advance(
             run,
             WorkflowState.COMPLETED,
             "complete",
             {"external_ref_count": len(run.external_refs)},
         )
+
+    def _write_optional_odoo_trace(self, run: WorkflowRun) -> list[ExternalRef]:
+        write_deal_context = getattr(self.odoo, "write_deal_context", None)
+        write_audit_log = getattr(self.odoo, "write_audit_log", None)
+        if not callable(write_deal_context) or not callable(write_audit_log):
+            return []
+
+        customer_name = "Customer"
+        contact_email = None
+        if run.intake_summary is not None:
+            customer_name = run.intake_summary.customer_name or customer_name
+            contact_email = run.intake_summary.contact_email
+        elif run.brief.customer_name:
+            customer_name = run.brief.customer_name
+            contact_email = run.brief.contact_email
+
+        context_ref = write_deal_context(
+            run_id=run.run_id,
+            customer_name=customer_name,
+            contact_email=contact_email,
+            source_message=run.brief.message,
+            state="completed",
+            crm_lead_id=_numeric_ref_for_kind(run, "lead"),
+            sale_order_id=_numeric_ref_for_kind(run, "quotation"),
+            invoice_id=_numeric_ref_for_kind(run, "invoice_draft"),
+        )
+        audit_ref = write_audit_log(
+            run_id=run.run_id,
+            step_name="workflow_complete",
+            state_before=WorkflowState.TELEGRAM_NOTIFIED.value,
+            state_after=WorkflowState.COMPLETED.value,
+            service="agent",
+            external_ref=context_ref.external_id,
+            payload_summary=f"Completed workflow with {len(run.external_refs)} external refs.",
+            deal_context_id=_safe_int(context_ref.external_id),
+        )
+        return [context_ref, audit_ref]
 
     def _fail(self, run: WorkflowRun, step_name: str, exc: Exception) -> NoReturn:
         error_message = str(exc) or exc.__class__.__name__
@@ -191,3 +240,17 @@ class DealWorkflowRunner:
             error=error_message,
         )
         raise WorkflowRunFailed(failed_run, exc) from exc
+
+
+def _numeric_ref_for_kind(run: WorkflowRun, kind: str) -> int | None:
+    for ref in run.external_refs:
+        if ref.system == "odoo" and ref.metadata.get("kind") == kind:
+            return _safe_int(ref.external_id)
+    return None
+
+
+def _safe_int(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

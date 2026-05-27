@@ -21,6 +21,8 @@ def test_env_example_lists_integrations_without_real_secrets():
         "NVIDIA_API_KEY",
         "NIM_BASE_URL",
         "NIM_MODEL",
+        "NIM_VISION_MODEL",
+        "LIVE_WORKFLOW_ENABLED",
         "ODOO_URL",
         "ODOO_DATABASE",
         "ODOO_API_KEY",
@@ -30,6 +32,9 @@ def test_env_example_lists_integrations_without_real_secrets():
         "GITHUB_REPOSITORY",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
+        "AGENT_TELEGRAM_BOT_TOKEN",
+        "AGENT_TELEGRAM_CHAT_ID",
+        "AGENT_TELEGRAM_ALLOWED_USER_IDS",
         "SANDBOX",
     ]
     for name in required_names:
@@ -69,10 +74,26 @@ def test_makefile_has_demo_setup_targets_with_expected_commands():
         "odoo-up": "docker compose up -d db odoo",
         "nemoclaw-policies": "bash scripts/apply_nemoclaw_policies.sh",
         "nemoclaw-skills": "bash scripts/install_nemoclaw_skills.sh",
+        "nemoclaw-dashboard": "bash scripts/forward_nemoclaw_dashboard.sh",
+        "nemoclaw-dashboard-stop": "bash scripts/stop_nemoclaw_dashboard.sh",
+        "nemoclaw-dashboard-restart": "bash scripts/stop_nemoclaw_dashboard.sh && bash scripts/forward_nemoclaw_dashboard.sh",
+        "nemoclaw-solopreneur-sandbox": "bash scripts/onboard_solopreneur_openclaw_sandbox.sh",
+        "tool-gateway": "bash scripts/start_tool_gateway.sh",
+        "telegram-ops": "bash scripts/start_agent_telegram_ops.sh",
     }
 
     for target, command in expected_commands.items():
         assert re.search(rf"^{re.escape(target)}:\n\t{re.escape(command)}$", makefile, re.MULTILINE)
+
+
+def test_makefile_exports_dotenv_to_demo_targets():
+    makefile = read_text("Makefile")
+
+    assert re.search(
+        r"^ifneq \(,\$\(wildcard \.env\)\)\ninclude \.env\nexport\nendif$",
+        makefile,
+        re.MULTILINE,
+    )
 
 
 def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
@@ -90,6 +111,11 @@ def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
         "docker compose up -d db odoo",
         "bash scripts/apply_nemoclaw_policies.sh",
         "bash scripts/install_nemoclaw_skills.sh",
+        "make tool-gateway",
+        "make telegram-ops",
+        "/tools/deal-to-delivery/run",
+        "LIVE_WORKFLOW_ENABLED=1",
+        "AGENT_TELEGRAM_BOT_TOKEN",
         "Odoo and NemoClaw source code is not vendored",
         "NVIDIA NemoClaw",
         "Telegram Bot API",

@@ -1,5 +1,6 @@
 import re
 import tomllib
+import json
 from pathlib import Path
 
 import yaml
@@ -23,11 +24,25 @@ SCRIPT_PATHS = [
     REPO_ROOT / "scripts" / "setup_nemoclaw.sh",
     REPO_ROOT / "scripts" / "apply_nemoclaw_policies.sh",
     REPO_ROOT / "scripts" / "install_nemoclaw_skills.sh",
+    REPO_ROOT / "scripts" / "stop_nemoclaw_dashboard.sh",
+    REPO_ROOT / "scripts" / "forward_nemoclaw_dashboard.sh",
+    REPO_ROOT / "scripts" / "start_tool_gateway.sh",
+    REPO_ROOT / "scripts" / "start_agent_telegram_ops.sh",
+    REPO_ROOT / "scripts" / "onboard_solopreneur_openclaw_sandbox.sh",
+]
+ATOMIC_OPENCLAW_TOOLS = [
+    "crm_lookup",
+    "business_card_capture",
+    "deal_prepare",
+    "odoo_create_deal_artifacts",
+    "delivery_create_tasks",
+    "notify_stakeholder",
 ]
 PRIVATE_ALLOWED_IPS = [
     "10.0.0.0/8",
     "172.16.0.0/12",
     "192.168.0.0/16",
+    "fc00::/7",
 ]
 
 
@@ -118,10 +133,104 @@ def test_skill_hard_rules_cover_demo_safety_boundaries():
         "never mark a deal won without explicit acceptance",
         "always log high-impact actions",
         "prefer tool gateway for side effects",
+        "live_workflow_enabled=1",
+        "selected tool argument `live=true`",
         "use linear for engineering execution",
     ]
     for rule in required_rules:
         assert rule in skill_text
+
+
+def test_skill_documents_openclaw_tool_boundary_without_prompting_for_shell_tools():
+    skill_text = read_text(REPO_ROOT / "skills" / "deal-to-delivery" / "SKILL.md").lower()
+    sop_text = read_text(REPO_ROOT / "skills" / "deal-to-delivery" / "sop.md").lower()
+    combined = "\n".join([skill_text, sop_text])
+
+    required_phrases = [
+        "skills are instructions, not tool registration",
+        "first-class openclaw tool",
+        "normal operator prompts should not name tool apis",
+        "do not guess missing shell tools",
+        "telegram ops bot",
+        "operator fallback",
+        "business_card_capture",
+        "crm_lookup",
+        "deal_prepare",
+        "odoo_create_deal_artifacts",
+        "delivery_create_tasks",
+        "notify_stakeholder",
+        '"live": true',
+        '"live": false',
+        '"run_id"',
+        '"message"',
+    ]
+    for phrase in required_phrases:
+        assert phrase in combined
+
+    forbidden_prompt_fragments = [
+        "use the bash tool",
+        'tool_search query:"bash"',
+        'tool_call name:"bash"',
+        "do not call read",
+        "do not call exec",
+        "do not call fetch",
+        "python urllib fallback",
+        "deal_to_delivery_run",
+    ]
+    for phrase in forbidden_prompt_fragments:
+        assert phrase not in combined
+
+
+def test_solopreneur_openclaw_plugin_declares_atomic_tools_only():
+    plugin_root = REPO_ROOT / "openclaw_plugins" / "solopreneur-tools"
+    manifest = json.loads(read_text(plugin_root / "openclaw.plugin.json"))
+    package = json.loads(read_text(plugin_root / "package.json"))
+    runtime = read_text(plugin_root / "dist" / "index.js")
+
+    assert manifest["id"] == "solopreneur-tools"
+    assert manifest["contracts"]["tools"] == ATOMIC_OPENCLAW_TOOLS
+    assert manifest["configSchema"]["properties"]["gatewayBaseUrl"]["default"] == (
+        "http://host.openshell.internal:8088"
+    )
+    assert package["type"] == "module"
+    assert package["openclaw"]["extensions"] == ["./dist/index.js"]
+
+    for tool_name in ATOMIC_OPENCLAW_TOOLS:
+        assert f'name: "{tool_name}"' in runtime
+
+    assert "deal_to_delivery_run" not in json.dumps(manifest)
+    assert "deal_to_delivery_run" not in runtime
+    assert "/tools/deal-to-delivery/run" not in runtime
+
+
+def test_solopreneur_openclaw_plugin_routes_to_atomic_gateway_endpoints():
+    runtime = read_text(REPO_ROOT / "openclaw_plugins" / "solopreneur-tools" / "dist" / "index.js")
+
+    expected_routes = [
+        "/tools/crm/lookup",
+        "/tools/crm/business-card",
+        "/tools/deal/prepare",
+        "/tools/odoo/deal-artifacts",
+        "/tools/delivery/tasks",
+        "/tools/notify/stakeholder",
+    ]
+    for route in expected_routes:
+        assert route in runtime
+
+    assert "host.openshell.internal:8088" in runtime
+
+
+def test_tool_gateway_policy_allows_documented_http_clients():
+    preset = load_preset(REPO_ROOT / "presets" / "tool-gateway-local.yaml")
+    binaries = {
+        item["path"]
+        for item in preset["network_policies"]["tool_gateway_local"]["binaries"]
+    }
+
+    assert "/usr/bin/curl" in binaries
+    assert "/usr/local/bin/node" in binaries
+    assert "/usr/bin/node" in binaries
+    assert "/usr/bin/python3" in binaries
 
 
 def test_scripts_are_offline_safe_and_do_not_contain_real_secrets():
@@ -143,3 +252,58 @@ def test_scripts_use_current_nemoclaw_policy_and_skill_commands():
 
     assert 'nemoclaw sandbox policy add "$SANDBOX" --from-dir ./presets --yes' in policy_script
     assert 'nemoclaw sandbox skill install "$SANDBOX" ./skills/deal-to-delivery' in skill_script
+
+
+def test_dashboard_forward_script_uses_service_forward_for_local_port():
+    script = read_text(REPO_ROOT / "scripts" / "forward_nemoclaw_dashboard.sh")
+
+    assert 'SANDBOX="${SANDBOX:-deal-demo}"' in script
+    assert 'TARGET_DASHBOARD_PORT="${TARGET_DASHBOARD_PORT:-18789}"' in script
+    assert 'LOCAL_DASHBOARD_PORT="${LOCAL_DASHBOARD_PORT:-18789}"' in script
+    assert 'openshell forward service' in script
+    assert '--target-port "$TARGET_DASHBOARD_PORT"' in script
+    assert '--local "$LOCAL_BIND:$LOCAL_DASHBOARD_PORT"' in script
+    assert 'LOCAL_DASHBOARD_PORT=18790 make nemoclaw-dashboard' in script
+    assert 'make nemoclaw-dashboard-restart' in script
+    assert '"$SANDBOX"' in script
+
+
+def test_dashboard_stop_script_only_stops_known_forward_processes():
+    script = read_text(REPO_ROOT / "scripts" / "stop_nemoclaw_dashboard.sh")
+
+    assert 'LOCAL_DASHBOARD_PORT="${LOCAL_DASHBOARD_PORT:-18789}"' in script
+    assert 'lsof -nP -iTCP:"$LOCAL_DASHBOARD_PORT" -sTCP:LISTEN -t' in script
+    assert 'command_name="$(lsof -nP -a -p "$pid" -iTCP:"$LOCAL_DASHBOARD_PORT" -sTCP:LISTEN -Fc' in script
+    assert '"$command_name" == "openshell"' in script
+    assert '"$command_name" == "ssh"' in script
+    assert '127.0.0.1:$LOCAL_DASHBOARD_PORT' in script
+    assert 'kill "$pid"' in script
+    assert 'Refusing to stop PID' in script
+
+
+def test_solopreneur_openclaw_sandbox_bake_assets_are_present():
+    dockerfile = read_text(REPO_ROOT / "Dockerfile.nemoclaw-solopreneur")
+    script = read_text(REPO_ROOT / "scripts" / "onboard_solopreneur_openclaw_sandbox.sh")
+
+    assert "COPY openclaw_plugins/solopreneur-tools/" in dockerfile
+    assert "/sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
+    assert "openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
+    assert "chown -R sandbox:sandbox /sandbox/.openclaw/extensions/solopreneur-tools" in dockerfile
+    assert "openclaw doctor --fix" in dockerfile
+    assert 'SANDBOX="${SANDBOX:-deal-demo}"' in script
+    assert 'DASHBOARD_PORT="${TARGET_DASHBOARD_PORT:-18789}"' in script
+    assert 'OPENCLAW_DEFAULT_MODEL="${OPENCLAW_DEFAULT_MODEL:-nvidia/nemotron-3-super-120b-a12b}"' in script
+    assert 'nemoclaw onboard --from "$DOCKERFILE" --name "$SANDBOX"' in script
+    assert "openclaw config set gateway.mode local" in script
+    assert "openclaw config set gateway.bind loopback" in script
+    assert 'openclaw config set gateway.port "$DASHBOARD_PORT" --strict-json' in script
+    assert "openclaw config set gateway.auth.mode token" in script
+    assert 'randomBytes(32).toString("base64url")' in script
+    assert "gateway.auth.token" in script
+    assert '"models","auth","paste-api-key"' in script
+    assert "--provider\",\"nvidia\"" in script
+    assert "--profile-id\",\"nvidia:manual\"" in script
+    assert 'openclaw models set "$OPENCLAW_DEFAULT_MODEL"' in script
+    assert "openclaw plugins validate --root /sandbox/.openclaw/extensions/solopreneur-tools" in script
+    assert "openclaw plugins registry --refresh" in script
+    assert 'nemoclaw "$SANDBOX" recover' in script

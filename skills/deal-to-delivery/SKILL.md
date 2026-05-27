@@ -24,17 +24,89 @@ Turn a customer request into a safe delivery package:
 - never mark a deal won without explicit acceptance from the customer or operator.
 - always log high-impact actions before and after tool calls that create or change external records.
 - prefer tool gateway for side effects; do not call Odoo, Linear, GitHub, or Telegram directly when the gateway is available.
+- for live workflow side effects, require both `LIVE_WORKFLOW_ENABLED=1` on the host and the selected tool argument `live=true`.
 - use Linear for engineering execution; keep GitHub focused on delivery traceability and code/PR coordination.
+- skills are instructions, not tool registration. This skill does not create a shell, HTTP, or project tool in OpenClaw.
+- use the first-class OpenClaw tools from the `solopreneur-tools` plugin when they are available. If they are not available, stop and say the project OpenClaw tool/plugin is missing.
+- do not guess missing shell tools such as `bash`, `exec`, `read`, `fetch`, or `tool_search_code`.
+- normal operator prompts should not name tool APIs, URLs, curl commands, or JSON payloads.
 
 ## Operating Flow
 
-1. Read `workspace/IDENTITY.md`, `workspace/USER.md`, and `workspace/MEMORY.md` before acting.
+1. Use the injected workspace context if present. Do not call `read` to inspect workspace files.
 2. Convert the customer message into a `DealBrief` with assumptions called out plainly.
 3. Run policy checks against the hard rules before any external side effect.
-4. Use the local tool gateway to create Odoo lead, quote, and draft invoice records.
-5. Create Linear issues for implementation and operations tasks.
-6. Create a GitHub delivery issue that links the Odoo and Linear references.
-7. Send a Telegram update only after the records above exist.
+4. Choose the smallest atomic tool sequence that satisfies the request.
+5. Create Linear issues for implementation and operations tasks only when the operator asks to move from preparation to delivery execution.
+6. Create a GitHub delivery issue only after Odoo deal artifacts or Linear delivery tasks exist.
+7. Send a Telegram update only after relevant records above exist.
 8. Write an audit summary that names every external system touched.
+
+## OpenClaw Tool Boundary
+
+The intended OpenClaw dashboard integration is a first-class OpenClaw tool/plugin, not a prompt that asks the model to find a shell. The `solopreneur-tools` plugin exposes these atomic tools:
+
+- `crm_lookup`: search Odoo contacts and CRM leads.
+- `business_card_capture`: extract a business-card image and write the contact/lead when live mode is approved.
+- `deal_prepare`: turn a customer message into a deal brief, assumptions, quote draft, and delivery plan with no external side effects.
+- `odoo_create_deal_artifacts`: create Odoo CRM lead, quotation, draft invoice, deal context, and audit records after approval.
+- `delivery_create_tasks`: create Linear delivery tasks and GitHub delivery tracking after approval.
+- `notify_stakeholder`: send a Telegram update after relevant external refs exist.
+
+Each tool calls a host gateway endpoint behind the scenes. The user-facing chat should stay natural; the operator should not paste URLs or JSON payloads.
+
+Common tool arguments are `"run_id"`, `"message"`, and `"live": false` for dry-run preparation.
+For full live mode, tool arguments must include exactly `"live": true` and the host must also set `LIVE_WORKFLOW_ENABLED=1`.
+
+After the tool response, summarize `mode`, `live_enabled`, final workflow state, and every external reference returned. If the gateway returns `missing_config`, stop and tell the operator which environment variables are missing.
+
+## Demo Prompts
+
+Good operator prompts describe business intent only:
+
+```text
+Acme Studio wants a two-week Odoo CRM automation package starting next Monday.
+Scope: lead capture, quote generation, delivery task tracking, and stakeholder update when delivery is ready.
+Budget is USD 8000. Contact is Ada Lovelace, ada@example.com.
+Prepare the deal-to-delivery workflow as a dry run.
+```
+
+Use `deal_prepare` only.
+
+```text
+Looks good. Create the Odoo deal records as draft artifacts, but do not mark won or finalize the invoice.
+```
+
+Use `odoo_create_deal_artifacts` after confirming live approval.
+
+```text
+Create the delivery work items and tracking issue for the approved Acme package.
+```
+
+Use `delivery_create_tasks` after Odoo refs exist.
+
+```text
+Tell the stakeholder the Acme delivery package is ready for review.
+```
+
+Use `notify_stakeholder` only after relevant external refs exist.
+
+```text
+Find Acme's contact info in CRM.
+```
+
+Use `crm_lookup`.
+
+```text
+I just uploaded a business card. Extract it and create the CRM contact.
+```
+
+Use `business_card_capture` when image data is available from the channel.
+
+For the mobile solopreneur demo, the Telegram ops bot is the better live surface for photo intake, CRM lookup, and quick customer updates. The Telegram bot and the OpenClaw tool should both call the same host gateway so audit logs and safety gates stay consistent.
+
+## Fallbacks
+
+Operator fallback paths are for diagnostics, not normal chat prompts: use host-side `curl`, `make tool-gateway`, `make telegram-ops`, or `nemoclaw deal-demo exec -- curl ...` outside the dashboard to verify connectivity and policy. Do not expose these mechanics to the judge-facing prompt.
 
 For the detailed checklist, follow `sop.md` in this skill directory.

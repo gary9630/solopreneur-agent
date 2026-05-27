@@ -3,7 +3,7 @@
     <data noupdate="1">
         <record id="product_deal_agent_discovery" model="product.template">
             <field name="name">Agent Discovery Workshop</field>
-            <field name="detailed_type">service</field>
+            <field name="type">service</field>
             <field name="sale_ok">True</field>
             <field name="purchase_ok">False</field>
             <field name="list_price">1500.00</field>
@@ -12,7 +12,7 @@
 
         <record id="product_deal_agent_prototype" model="product.template">
             <field name="name">Deal-to-Delivery Prototype Sprint</field>
-            <field name="detailed_type">service</field>
+            <field name="type">service</field>
             <field name="sale_ok">True</field>
             <field name="purchase_ok">False</field>
             <field name="list_price">3000.00</field>

@@ -71,6 +71,23 @@ def test_odoo_xml_files_are_well_formed():
         assert tree.getroot().tag == "odoo"
 
 
+def test_demo_products_use_odoo_19_product_type_field():
+    tree = ElementTree.parse(ADDON_ROOT / "data" / "demo_products.xml")
+
+    product_records = [
+        node
+        for node in tree.getroot().iter("record")
+        if node.attrib.get("model") == "product.template"
+    ]
+
+    assert product_records
+    for record in product_records:
+        fields = {field.attrib["name"]: field.text for field in record.iter("field")}
+
+        assert "detailed_type" not in fields
+        assert fields["type"] == "service"
+
+
 def test_access_control_rows_cover_custom_models_for_demo_users():
     access_path = ADDON_ROOT / "security" / "ir.model.access.csv"
 

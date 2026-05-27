@@ -1,0 +1,12 @@
+.git
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+agent_app/.venv
+agent_app/.pytest_cache
+reference-works
+*.pyc
+*.pyo
+*.log
+.env

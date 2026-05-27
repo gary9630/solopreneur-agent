@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# NVIDIA API Key
+NIM-API-usage.md
+project-*.md
+
+reference-works/

@@ -7,6 +7,7 @@ import httpx
 
 from deal_agent.connectors.base import ConnectorError, request_json
 from deal_agent.models import DealBrief, ExternalRef, IntakeSummary, QuoteDraft, QuoteLineItem
+from deal_agent.tool_models import BusinessCardContact, CrmLookupResult
 
 
 class OdooHttpConnector:
@@ -99,6 +100,133 @@ class OdooHttpConnector:
         self._invoice_refs[run_id] = invoice_ref
         return _copy_ref(invoice_ref)
 
+    def upsert_contact_from_business_card(self, run_id: str, contact: BusinessCardContact) -> ExternalRef:
+        existing = self._find_partner(contact)
+        values = _business_card_partner_values(run_id, contact)
+        if existing is not None:
+            partner_id = _record_id(existing, "Odoo partner")
+            self._call_json(
+                "res.partner",
+                "write",
+                {
+                    "ids": [partner_id],
+                    "values": values,
+                },
+            )
+            action = "updated"
+        else:
+            partner_id = self._create_id("res.partner", "create", values)
+            action = "created"
+
+        return ExternalRef(
+            system="odoo",
+            external_id=str(partner_id),
+            metadata={"kind": "contact", "model": "res.partner", "run_id": run_id, "action": action},
+        )
+
+    def create_crm_lead_for_contact(
+        self,
+        run_id: str,
+        contact_ref: ExternalRef,
+        contact: BusinessCardContact,
+    ) -> ExternalRef:
+        payload = {
+            "name": f"{contact.company or contact.name or 'Business card'} - {run_id}",
+            "partner_id": int(contact_ref.external_id),
+            "contact_name": contact.name,
+            "email_from": contact.email,
+            "phone": contact.phone,
+            "description": contact.raw_text or "Business card captured from Telegram.",
+        }
+        return self._create(
+            "crm.lead",
+            "create",
+            _drop_none(payload),
+            kind="lead",
+            run_id=run_id,
+        )
+
+    def lookup_crm(self, query: str, *, limit: int = 5) -> CrmLookupResult:
+        contacts = self._search_read(
+            "res.partner",
+            {
+                "domain": [["name", "ilike", query]],
+                "fields": ["id", "name", "email", "phone", "company_name", "website"],
+                "limit": limit,
+            },
+        )
+        leads = self._search_read(
+            "crm.lead",
+            {
+                "domain": [["name", "ilike", query]],
+                "fields": ["id", "name", "contact_name", "email_from", "phone", "partner_name"],
+                "limit": limit,
+            },
+        )
+        return CrmLookupResult(query=query, contacts=contacts, leads=leads)
+
+    def write_deal_context(
+        self,
+        *,
+        run_id: str,
+        customer_name: str,
+        contact_email: str | None,
+        source_message: str,
+        state: str,
+        crm_lead_id: int | None = None,
+        sale_order_id: int | None = None,
+        invoice_id: int | None = None,
+    ) -> ExternalRef:
+        payload = {
+            "name": f"{customer_name} - {run_id}",
+            "run_id": run_id,
+            "customer_name": customer_name,
+            "contact_email": contact_email,
+            "source_message": source_message,
+            "state": state,
+            "crm_lead_id": crm_lead_id,
+            "sale_order_id": sale_order_id,
+            "invoice_id": invoice_id,
+        }
+        return self._create(
+            "deal.agent.deal.context",
+            "create",
+            _drop_none(payload),
+            kind="deal_context",
+            run_id=run_id,
+        )
+
+    def write_audit_log(
+        self,
+        *,
+        run_id: str,
+        step_name: str,
+        state_before: str | None,
+        state_after: str | None,
+        service: str,
+        external_ref: str | None,
+        payload_summary: str,
+        deal_context_id: int | None = None,
+    ) -> ExternalRef:
+        payload = {
+            "name": f"{service}:{step_name}:{run_id}",
+            "run_id": run_id,
+            "step_name": step_name,
+            "state_before": state_before,
+            "state_after": state_after,
+            "service": service,
+            "external_ref": external_ref,
+            "payload_summary": payload_summary,
+            "deal_context_id": deal_context_id,
+        }
+        return self._create(
+            "deal.agent.audit.log",
+            "create",
+            _drop_none(payload),
+            kind="audit_log",
+            run_id=run_id,
+        )
+
     def _ensure_partner(self, run_id: str, brief: DealBrief, summary: IntakeSummary) -> int:
         if run_id in self._partner_ids:
             return self._partner_ids[run_id]
@@ -144,7 +272,11 @@ class OdooHttpConnector:
         )
 
     def _create_id(self, model: str, method: str, payload: dict[str, Any]) -> int:
-        result = request_json(
+        result = self._call_json(model, method, payload)
+        return _extract_odoo_id(result)
+
+    def _call_json(self, model: str, method: str, payload: dict[str, Any]) -> Any:
+        return request_json(
             self._http_client,
             "Odoo",
             f"{self.base_url}/json/2/{model}/{method}",
@@ -152,7 +284,35 @@ class OdooHttpConnector:
             json=payload,
             require_object=False,
         )
-        return _extract_odoo_id(result)
+
+    def _find_partner(self, contact: BusinessCardContact) -> dict[str, Any] | None:
+        if contact.email:
+            records = self._search_read(
+                "res.partner",
+                {
+                    "domain": [["email", "=", contact.email]],
+                    "fields": ["id", "name", "email"],
+                    "limit": 1,
+                },
+            )
+            if records:
+                return records[0]
+        return None
+
+    def _search_read(self, model: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        result = _unwrap_odoo_result(self._call_json(model, "search_read", payload))
+        if not isinstance(result, list):
+            raise ConnectorError(f"Odoo {model} search_read response was not a list", retryable=False, status_code=200)
+        records: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                raise ConnectorError(
+                    f"Odoo {model} search_read record was not an object",
+                    retryable=False,
+                    status_code=200,
+                )
+            records.append(item)
+        return records
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -183,7 +343,7 @@ def _invoice_line_command(item: QuoteLineItem) -> list[Any]:
 
 
 def _extract_odoo_id(payload: Any) -> int:
-    result = payload.get("result", payload) if isinstance(payload, dict) else payload
+    result = _unwrap_odoo_result(payload)
     if isinstance(result, list):
         if not result:
             raise ConnectorError("Odoo response did not include an id", retryable=False, status_code=200)
@@ -199,6 +359,34 @@ def _extract_odoo_id(payload: Any) -> int:
         return int(external_id)
     except (TypeError, ValueError):
         raise ConnectorError("Odoo response id was not an integer", retryable=False, status_code=200) from None
+
+
+def _unwrap_odoo_result(payload: Any) -> Any:
+    return payload.get("result", payload) if isinstance(payload, dict) else payload
+
+
+def _record_id(payload: dict[str, Any], label: str) -> int:
+    external_id = payload.get("id")
+    if external_id is None:
+        raise ConnectorError(f"{label} response did not include an id", retryable=False, status_code=200)
+    try:
+        return int(external_id)
+    except (TypeError, ValueError):
+        raise ConnectorError(f"{label} response id was not an integer", retryable=False, status_code=200) from None
+
+
+def _business_card_partner_values(run_id: str, contact: BusinessCardContact) -> dict[str, Any]:
+    return _drop_none(
+        {
+            "name": contact.name or contact.company or contact.email or f"Business card {run_id}",
+            "email": contact.email,
+            "phone": contact.phone,
+            "website": contact.website,
+            "function": contact.title,
+            "company_name": contact.company,
+            "comment": f"Business card captured by deal-agent run {run_id}",
+        }
+    )
 
 
 def _decimal_string(value: Decimal) -> str:

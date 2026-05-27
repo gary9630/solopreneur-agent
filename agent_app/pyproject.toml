@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 deal-agent-demo = "deal_agent.demo_cli:main"
+deal-agent-telegram-ops = "deal_agent.telegram_ops_cli:main"
 
 [build-system]
 requires = ["hatchling"]
