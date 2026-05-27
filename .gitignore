@@ -11,6 +11,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+!openclaw_plugins/solopreneur-tools/dist/
+!openclaw_plugins/solopreneur-tools/dist/index.js
 downloads/
 eggs/
 .eggs/

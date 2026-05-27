@@ -62,6 +62,14 @@ Show the guardrails in `skills/deal-to-delivery/SKILL.md`, especially invoice, d
 
 ## 5. Run The Full-Live Tool Gateway
 
+For the OpenClaw dashboard path, prepare the sandbox with the official NemoClaw image and local plugin install:
+
+```bash
+make nemoclaw-solopreneur-sandbox
+```
+
+Use `USE_CUSTOM_IMAGE=1 make nemoclaw-solopreneur-sandbox` only for experimental image-baking work after verifying NemoClaw startup preloads are present.
+
 Start the gateway:
 
 ```bash

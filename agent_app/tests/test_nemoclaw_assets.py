@@ -203,6 +203,13 @@ def test_solopreneur_openclaw_plugin_declares_atomic_tools_only():
     assert "/tools/deal-to-delivery/run" not in runtime
 
 
+def test_solopreneur_openclaw_plugin_runtime_is_not_ignored():
+    gitignore = read_text(REPO_ROOT / ".gitignore")
+
+    assert "!openclaw_plugins/solopreneur-tools/dist/" in gitignore
+    assert "!openclaw_plugins/solopreneur-tools/dist/index.js" in gitignore
+
+
 def test_solopreneur_openclaw_plugin_routes_to_atomic_gateway_endpoints():
     runtime = read_text(REPO_ROOT / "openclaw_plugins" / "solopreneur-tools" / "dist" / "index.js")
 
@@ -281,7 +288,7 @@ def test_dashboard_stop_script_only_stops_known_forward_processes():
     assert 'Refusing to stop PID' in script
 
 
-def test_solopreneur_openclaw_sandbox_bake_assets_are_present():
+def test_solopreneur_openclaw_sandbox_onboard_assets_are_present():
     dockerfile = read_text(REPO_ROOT / "Dockerfile.nemoclaw-solopreneur")
     script = read_text(REPO_ROOT / "scripts" / "onboard_solopreneur_openclaw_sandbox.sh")
 
@@ -293,7 +300,13 @@ def test_solopreneur_openclaw_sandbox_bake_assets_are_present():
     assert 'SANDBOX="${SANDBOX:-deal-demo}"' in script
     assert 'DASHBOARD_PORT="${TARGET_DASHBOARD_PORT:-18789}"' in script
     assert 'OPENCLAW_DEFAULT_MODEL="${OPENCLAW_DEFAULT_MODEL:-nvidia/nemotron-3-super-120b-a12b}"' in script
-    assert 'nemoclaw onboard --from "$DOCKERFILE" --name "$SANDBOX"' in script
+    assert 'PLUGIN_ROOT="${PLUGIN_ROOT:-openclaw_plugins/solopreneur-tools}"' in script
+    assert 'USE_CUSTOM_IMAGE="${USE_CUSTOM_IMAGE:-0}"' in script
+    assert 'if [[ "$USE_CUSTOM_IMAGE" == "1" ]]' in script
+    assert 'nemoclaw onboard --from "$DOCKERFILE" --name "$SANDBOX" "$@"' in script
+    assert 'nemoclaw onboard --name "$SANDBOX" "$@"' in script
+    assert 'tar -C "$PLUGIN_ROOT" -cf - .' in script
+    assert 'tar -C /sandbox/.openclaw/extensions/solopreneur-tools -xf -' in script
     assert "openclaw config set gateway.mode local" in script
     assert "openclaw config set gateway.bind loopback" in script
     assert 'openclaw config set gateway.port "$DASHBOARD_PORT" --strict-json' in script

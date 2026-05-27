@@ -111,6 +111,7 @@ def test_readme_and_demo_docs_describe_hackathon_mvp_flow_without_secrets():
         "docker compose up -d db odoo",
         "bash scripts/apply_nemoclaw_policies.sh",
         "bash scripts/install_nemoclaw_skills.sh",
+        "make nemoclaw-solopreneur-sandbox",
         "make tool-gateway",
         "make telegram-ops",
         "/tools/deal-to-delivery/run",

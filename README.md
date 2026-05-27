@@ -52,6 +52,14 @@ After Odoo 19 starts, install the `deal_to_delivery_agent` addon to inspect deal
 
 ## NemoClaw Demo Assets
 
+Create or refresh the solopreneur sandbox with the official NemoClaw image, then install the local OpenClaw plugin into the sandbox state:
+
+```bash
+make nemoclaw-solopreneur-sandbox
+```
+
+The default path intentionally does not build from `Dockerfile.nemoclaw-solopreneur`. The official NemoClaw sandbox image carries startup preloads and OpenClaw patches needed for proxied NVIDIA inference. The custom Dockerfile is kept as an experimental path for later image baking and can be selected with `USE_CUSTOM_IMAGE=1`.
+
 Apply the local policies and install the deal-to-delivery skill:
 
 ```bash
