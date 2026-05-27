@@ -10,15 +10,7 @@ Odoo and NemoClaw source code is not vendored. This repository includes integrat
 
 For the full local setup flow, see [Install.md](Install.md).
 
-The GitHub Pages slide deck for the hackathon pitch is [docs/index.html](docs/index.html). Configure Pages from the repository settings:
-
-```text
-Source: Deploy from a branch
-Branch: main
-Folder: /docs
-```
-
-After this branch is merged into `main`, the static deck can be served directly by GitHub Pages without a build step.
+Reference slides: [https://gary9630.github.io/solopreneur-agent/](https://gary9630.github.io/solopreneur-agent/)
 
 Install the Python app dependencies:
 
