@@ -31,6 +31,8 @@ Turn a customer request into a safe delivery package:
 - do not guess missing shell tools such as `bash`, `exec`, `read`, or `fetch`.
 - in NemoClaw compact tool-catalog mode, the visible tool may be only `tool_search_code`; use it with JavaScript code that calls `openclaw.tools.search("crm_lookup")`, `openclaw.tools.describe("crm_lookup")`, or `openclaw.tools.call("crm_lookup", { query: "...", live: false })`. Do not pass `require(...)` code, and do not call `openclaw.tools.search({ query: "..." })`.
 - normal operator prompts should not name tool APIs, URLs, curl commands, or JSON payloads.
+- for meeting audio, preserve the spoken language; use Traditional Chinese for Chinese speech and English for English speech.
+- do not claim high accuracy without live eval evidence from the project's opt-in audio evaluation.
 
 ## Operating Flow
 
@@ -57,6 +59,7 @@ The intended OpenClaw dashboard integration is a first-class OpenClaw tool/plugi
 - `odoo_create_deal_artifacts`: convenience fallback that creates contact, CRM lead, sale order quotation, draft invoice, deal context, and audit records after approval.
 - `delivery_create_tasks`: create Linear delivery tasks and GitHub delivery tracking after approval.
 - `notify_stakeholder`: send a Telegram update after relevant external refs exist.
+- `meeting_audio_process`: transcribe meeting audio and generate meeting minutes from the transcript. Send the transcript before the meeting minutes.
 
 Each tool calls a host gateway endpoint behind the scenes. The user-facing chat should stay natural; the operator should not paste URLs or JSON payloads.
 
@@ -127,6 +130,12 @@ I just uploaded a business card. Extract it and create the CRM contact.
 ```
 
 Use `business_card_capture` when image data is available from the channel.
+
+```text
+I uploaded meeting audio. Transcribe it and send meeting minutes.
+```
+
+Use `meeting_audio_process` when audio data is available from the channel. The transcript should be returned first, then the meeting minutes. If Chinese is detected, use Traditional Chinese. Do not claim high accuracy without live eval evidence.
 
 For the mobile solopreneur demo, the Telegram ops bot is the better live surface for photo intake, CRM lookup, and quick customer updates. The Telegram bot and the OpenClaw tool should both call the same host gateway so audit logs and safety gates stay consistent.
 

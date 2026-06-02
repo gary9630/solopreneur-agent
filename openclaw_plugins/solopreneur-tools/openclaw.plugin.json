@@ -28,7 +28,8 @@
       "odoo_create_draft_invoice",
       "odoo_create_deal_artifacts",
       "delivery_create_tasks",
-      "notify_stakeholder"
+      "notify_stakeholder",
+      "meeting_audio_process"
     ]
   }
 }

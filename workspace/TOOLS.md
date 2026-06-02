@@ -2,6 +2,8 @@
 
 Use the deal-to-delivery tools for CRM, Odoo deal artifacts, delivery work, and stakeholder updates.
 
+Use `meeting_audio_process` for meeting audio. It transcribes the recording first and then generates meeting minutes from the transcript. Preserve the spoken language, use Traditional Chinese for Chinese speech, and do not claim high accuracy without live eval evidence.
+
 In NemoClaw compact tool-catalog mode, the only visible tool may be `tool_search_code`. That is expected. Its `code` argument is a JavaScript body with these helpers:
 
 ```js
@@ -36,3 +38,4 @@ Project tools:
 - `odoo_create_deal_artifacts`
 - `delivery_create_tasks`
 - `notify_stakeholder`
+- `meeting_audio_process`

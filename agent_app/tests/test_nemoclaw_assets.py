@@ -44,6 +44,7 @@ ATOMIC_OPENCLAW_TOOLS = [
     "odoo_create_deal_artifacts",
     "delivery_create_tasks",
     "notify_stakeholder",
+    "meeting_audio_process",
 ]
 PRIVATE_ALLOWED_IPS = [
     "10.0.0.0/8",
@@ -173,6 +174,10 @@ def test_skill_documents_openclaw_tool_boundary_without_prompting_for_shell_tool
         "odoo_create_deal_artifacts",
         "delivery_create_tasks",
         "notify_stakeholder",
+        "meeting_audio_process",
+        "meeting audio",
+        "traditional chinese",
+        "do not claim high accuracy without live eval evidence",
         '"live": true',
         '"live": false',
         '"run_id"',
@@ -240,6 +245,7 @@ def test_solopreneur_openclaw_plugin_routes_to_atomic_gateway_endpoints():
         "/tools/odoo/deal-artifacts",
         "/tools/delivery/tasks",
         "/tools/notify/stakeholder",
+        "/tools/meeting/audio",
     ]
     for route in expected_routes:
         assert route in runtime

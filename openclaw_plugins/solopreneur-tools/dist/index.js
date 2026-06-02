@@ -260,5 +260,33 @@ export default defineToolPlugin({
         context,
       ),
     }),
+    tool({
+      name: "meeting_audio_process",
+      label: "Meeting Audio",
+      description: "Transcribe meeting audio and generate meeting minutes from Telegram or operator-provided audio.",
+      parameters: strictObject({
+        run_id: stringField("Stable id for this meeting audio run."),
+        audio_base64: stringField("Base64-encoded audio bytes."),
+        mime_type: stringField("Audio MIME type such as audio/wav, audio/mpeg, or audio/ogg."),
+        filename: stringField("Optional filename from Telegram or upload source."),
+        source: stringField("voice, audio, or document."),
+        language_hint: stringField("Optional language hint such as zh-TW or en."),
+        live: booleanField("Set true only after operator approval and LIVE_WORKFLOW_ENABLED=1."),
+      }, ["run_id", "audio_base64", "mime_type"]),
+      execute: ({
+        run_id,
+        audio_base64,
+        mime_type,
+        filename = null,
+        source = "audio",
+        language_hint = null,
+        live = false,
+      }, config, context) => postGateway(
+        "/tools/meeting/audio",
+        { run_id, audio_base64, mime_type, filename, source, language_hint, live },
+        config,
+        context,
+      ),
+    }),
   ],
 });
