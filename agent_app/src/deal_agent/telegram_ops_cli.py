@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from deal_agent.config import settings
 from deal_agent.connectors.base import ConnectorError
 from deal_agent.connectors.telegram import TelegramHttpConnector
-from deal_agent.main import run_business_card_tool, run_crm_lookup_tool
+from deal_agent.main import run_business_card_tool, run_crm_lookup_tool, run_meeting_audio_tool
 from deal_agent.telegram_ops import TelegramOpsBot
 
 
@@ -27,6 +27,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         allowed_user_ids=settings.agent_telegram_allowed_user_id_set(),
         business_card_tool=lambda request: run_business_card_tool(request, settings),
         crm_lookup_tool=lambda request: run_crm_lookup_tool(request, settings),
+        meeting_audio_tool=lambda request: run_meeting_audio_tool(request, settings),
+        max_message_chars=settings.meeting_audio_max_telegram_chars,
     )
 
     print("Agent Telegram ops bot polling started.")

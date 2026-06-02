@@ -5,7 +5,7 @@ from pathlib import Path
 from deal_agent.connectors.base import ConnectorError
 from deal_agent import telegram_ops_cli
 from deal_agent.telegram_ops import TelegramOpsBot
-from deal_agent.tool_models import BusinessCardToolRequest, CrmLookupRequest
+from deal_agent.tool_models import BusinessCardToolRequest, CrmLookupRequest, MeetingAudioToolRequest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,10 +20,14 @@ class StubTelegram:
         self.messages.append((chat_id, text))
 
     def get_file(self, file_id: str):
+        if file_id.startswith("voice") or file_id.startswith("audio"):
+            return {"file_path": f"audio/{file_id}.ogg"}
         return {"file_path": f"photos/{file_id}.jpg"}
 
     def download_file(self, file_path: str):
         self.downloaded.append(file_path)
+        if file_path.startswith("audio/"):
+            return b"audio-bytes"
         return b"card-bytes"
 
 
@@ -47,6 +51,7 @@ def test_telegram_ops_rejects_unauthorized_user():
         allowed_user_ids={42},
         business_card_tool=lambda request: {},
         crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=lambda request: {},
     )
 
     bot.handle_update(_message_update(text="find Ada"))
@@ -61,12 +66,14 @@ def test_telegram_ops_start_message_lists_capabilities():
         allowed_user_ids={123456789},
         business_card_tool=lambda request: {},
         crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=lambda request: {},
     )
 
     bot.handle_update(_message_update(text="/start"))
 
     assert "business card" in telegram.messages[0][1]
     assert "CRM lookup" in telegram.messages[0][1]
+    assert "meeting audio" in telegram.messages[0][1]
 
 
 def test_telegram_ops_text_message_routes_to_crm_lookup():
@@ -87,6 +94,7 @@ def test_telegram_ops_text_message_routes_to_crm_lookup():
         allowed_user_ids={123456789},
         business_card_tool=lambda request: {},
         crm_lookup_tool=lookup,
+        meeting_audio_tool=lambda request: {},
     )
 
     bot.handle_update(_message_update(text="查 Ada 聯絡方式"))
@@ -112,6 +120,7 @@ def test_telegram_ops_photo_routes_highest_resolution_to_business_card_tool():
         allowed_user_ids={123456789},
         business_card_tool=business_card,
         crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=lambda request: {},
     )
 
     bot.handle_update(
@@ -128,6 +137,128 @@ def test_telegram_ops_photo_routes_highest_resolution_to_business_card_tool():
     assert seen[0].mime_type == "image/jpeg"
     assert seen[0].live is True
     assert "Ada Lovelace" in telegram.messages[0][1]
+
+
+def test_telegram_ops_voice_routes_to_meeting_audio_tool():
+    telegram = StubTelegram()
+    seen: list[MeetingAudioToolRequest] = []
+
+    def meeting_audio(request: MeetingAudioToolRequest):
+        seen.append(request)
+        return {
+            "transcript": {
+                "language": "zh-TW",
+                "transcript": "今天討論交付排程。",
+                "confidence": 0.9,
+                "warnings": [],
+            },
+            "minutes": {
+                "language": "zh-TW",
+                "summary": "討論交付排程。",
+                "decisions": [],
+                "action_items": [],
+                "risks": [],
+                "follow_up": [],
+            },
+            "warnings": [],
+        }
+
+    bot = TelegramOpsBot(
+        telegram=telegram,
+        allowed_user_ids={123456789},
+        business_card_tool=lambda request: {},
+        crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=meeting_audio,
+    )
+
+    bot.handle_update(_message_update(voice={"file_id": "voice1", "mime_type": "audio/ogg"}))
+
+    assert telegram.downloaded == ["audio/voice1.ogg"]
+    assert base64.b64decode(seen[0].audio_base64.encode("ascii")) == b"audio-bytes"
+    assert seen[0].run_id == "telegram_audio_10"
+    assert seen[0].mime_type == "audio/ogg"
+    assert seen[0].source == "voice"
+    assert seen[0].live is True
+    assert "逐字稿" in telegram.messages[0][1]
+    assert "會議紀要" in telegram.messages[1][1]
+
+
+def test_telegram_ops_audio_routes_to_meeting_audio_tool_with_filename():
+    telegram = StubTelegram()
+    seen: list[MeetingAudioToolRequest] = []
+
+    bot = TelegramOpsBot(
+        telegram=telegram,
+        allowed_user_ids={123456789},
+        business_card_tool=lambda request: {},
+        crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=lambda request: seen.append(request) or {
+            "transcript": {"language": "en", "transcript": "We approved launch.", "confidence": 0.9, "warnings": []},
+            "minutes": {"language": "en", "summary": "Launch approved."},
+        },
+    )
+
+    bot.handle_update(
+        _message_update(audio={"file_id": "audio1", "mime_type": "audio/mpeg", "file_name": "meeting.mp3"})
+    )
+
+    assert seen[0].source == "audio"
+    assert seen[0].mime_type == "audio/mpeg"
+    assert seen[0].filename == "meeting.mp3"
+
+
+def test_telegram_ops_ignores_unsupported_document_without_text_lookup():
+    telegram = StubTelegram()
+    seen_audio = []
+    seen_lookup = []
+    bot = TelegramOpsBot(
+        telegram=telegram,
+        allowed_user_ids={123456789},
+        business_card_tool=lambda request: {},
+        crm_lookup_tool=lambda request: seen_lookup.append(request),
+        meeting_audio_tool=lambda request: seen_audio.append(request),
+    )
+
+    bot.handle_update(
+        _message_update(document={"file_id": "doc1", "mime_type": "application/pdf", "file_name": "notes.pdf"})
+    )
+
+    assert seen_audio == []
+    assert seen_lookup == []
+    assert telegram.messages == []
+
+
+def test_telegram_ops_chunks_long_meeting_audio_messages():
+    telegram = StubTelegram()
+
+    bot = TelegramOpsBot(
+        telegram=telegram,
+        allowed_user_ids={123456789},
+        business_card_tool=lambda request: {},
+        crm_lookup_tool=lambda request: {},
+        meeting_audio_tool=lambda request: {
+            "transcript": {
+                "language": "en",
+                "transcript": "A" * 80,
+                "confidence": 0.9,
+                "warnings": [],
+            },
+            "minutes": {
+                "language": "en",
+                "summary": "B" * 80,
+                "decisions": [],
+                "action_items": [],
+                "risks": [],
+                "follow_up": [],
+            },
+        },
+        max_message_chars=60,
+    )
+
+    bot.handle_update(_message_update(voice={"file_id": "voice2", "mime_type": "audio/ogg"}))
+
+    assert len(telegram.messages) > 2
+    assert all(len(text) <= 60 for _, text in telegram.messages)
 
 
 def test_telegram_ops_cli_entrypoint_is_registered():
