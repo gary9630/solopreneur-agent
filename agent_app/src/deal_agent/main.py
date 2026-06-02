@@ -15,16 +15,18 @@ from deal_agent.connectors import (
 )
 from deal_agent.live_factory import _normalize_nim_base_url, create_live_runner
 from deal_agent.models import DealBrief, IntakeSummary, QuoteDraft, WorkflowRun
-from deal_agent.nim_client import NimVisionClient
+from deal_agent.nim_client import NimAudioClient, NimChatClient, NimVisionClient
 from deal_agent.runner import DealWorkflowRunner, WorkflowRunFailed
 from deal_agent.services import FakeModelServices
 from deal_agent.services.business_card import BusinessCardExtractor
+from deal_agent.services.meeting_audio import MeetingAudioProcessingError, MeetingAudioProcessor
 from deal_agent.tool_models import (
     BusinessCardToolRequest,
     CrmLookupRequest,
     CrmLookupResult,
     DealPrepareRequest,
     DeliveryTasksRequest,
+    MeetingAudioToolRequest,
     NotifyStakeholderRequest,
     OdooContactRequest,
     OdooCrmLeadRequest,
@@ -77,6 +79,24 @@ def create_odoo_crm_connector(app_settings: Settings) -> OdooHttpConnector:
         base_url=app_settings.odoo_url,
         token=app_settings.odoo_api_key or "",
         database=app_settings.odoo_database,
+    )
+
+
+def create_meeting_audio_processor(app_settings: Settings) -> MeetingAudioProcessor:
+    nim_base_url = _normalize_nim_base_url(app_settings.nim_base_url)
+    return MeetingAudioProcessor(
+        audio_client=NimAudioClient(
+            api_key=app_settings.nvidia_api_key or "",
+            model=app_settings.nim_audio_model,
+            base_url=nim_base_url,
+            inline_max_bytes=app_settings.nim_audio_inline_max_bytes,
+        ),
+        minutes_client=NimChatClient(
+            api_key=app_settings.nvidia_api_key or "",
+            model=app_settings.nim_model or app_settings.nvidia_model,
+            base_url=nim_base_url,
+        ),
+        minimum_confidence=app_settings.meeting_audio_min_confidence,
     )
 
 
@@ -163,6 +183,48 @@ def run_business_card_tool(
             contact_ref.model_dump(mode="json"),
             lead_ref.model_dump(mode="json"),
         ],
+    }
+
+
+@app.post("/tools/meeting/audio")
+def run_meeting_audio_tool(
+    request: MeetingAudioToolRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> dict:
+    live_enabled = bool(request.live and app_settings.live_workflow_enabled)
+    if not live_enabled:
+        return {
+            "mode": "dry_run",
+            "live_enabled": False,
+            "planned_actions": [
+                "transcribe meeting audio",
+                "generate meeting minutes",
+                "send Telegram responses",
+            ],
+        }
+
+    missing_config = _missing_meeting_audio_config(app_settings)
+    if missing_config:
+        raise HTTPException(status_code=400, detail={"missing_config": missing_config})
+
+    try:
+        result = create_meeting_audio_processor(app_settings).process(
+            request.run_id,
+            request.audio_base64,
+            request.mime_type,
+            filename=request.filename,
+            language_hint=request.language_hint,
+        )
+    except MeetingAudioProcessingError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"error": str(exc), "retryable": exc.retryable},
+        ) from exc
+
+    return {
+        "mode": "live",
+        "live_enabled": True,
+        **result.model_dump(mode="json"),
     }
 
 
@@ -450,6 +512,12 @@ def _missing_crm_business_card_config(app_settings: Settings) -> list[str]:
     if not app_settings.nvidia_api_key:
         missing.insert(0, "NVIDIA_API_KEY")
     return missing
+
+
+def _missing_meeting_audio_config(app_settings: Settings) -> list[str]:
+    if not app_settings.nvidia_api_key:
+        return ["NVIDIA_API_KEY"]
+    return []
 
 
 def _missing_odoo_config(app_settings: Settings) -> list[str]:

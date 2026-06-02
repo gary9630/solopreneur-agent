@@ -4,6 +4,8 @@ from deal_agent import main as main_module
 from deal_agent.main import app, get_settings
 from deal_agent.config import Settings
 from deal_agent.models import ExternalRef
+from deal_agent.services.meeting_audio import MeetingAudioResult
+from deal_agent.tool_models import MeetingMinutes, MeetingTranscript
 
 
 def _settings(**overrides) -> Settings:
@@ -564,3 +566,78 @@ def test_atomic_delivery_tasks_live_uses_runner_components(monkeypatch):
         "github",
     ]
     assert calls == [live_settings]
+
+
+def test_meeting_audio_tool_defaults_to_dry_run():
+    _override_settings(_settings(live_workflow_enabled=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/meeting/audio",
+        json={
+            "run_id": "audio_1",
+            "audio_base64": "YXVkaW8=",
+            "mime_type": "audio/wav",
+            "source": "audio",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "dry_run"
+    assert body["live_enabled"] is False
+    assert "transcribe meeting audio" in body["planned_actions"]
+
+
+def test_meeting_audio_tool_live_uses_processor(monkeypatch):
+    _override_settings(_settings(live_workflow_enabled=True, nvidia_api_key="secret"))
+
+    class StubProcessor:
+        def process(self, run_id, audio_base64, mime_type, filename=None, language_hint=None):
+            return MeetingAudioResult(
+                run_id=run_id,
+                transcript=MeetingTranscript(language="en", transcript="We approved launch.", confidence=0.9),
+                minutes=MeetingMinutes(language="en", summary="Launch approved."),
+                audio_model="audio-model",
+                minutes_model="text-model",
+            )
+
+    monkeypatch.setattr(main_module, "create_meeting_audio_processor", lambda settings: StubProcessor())
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/meeting/audio",
+        json={
+            "run_id": "audio_2",
+            "audio_base64": "YXVkaW8=",
+            "mime_type": "audio/wav",
+            "source": "audio",
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "live"
+    assert body["live_enabled"] is True
+    assert body["transcript"]["transcript"] == "We approved launch."
+    assert body["minutes"]["summary"] == "Launch approved."
+
+
+def test_meeting_audio_tool_live_with_missing_config_returns_400():
+    _override_settings(_settings(live_workflow_enabled=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/meeting/audio",
+        json={
+            "run_id": "audio_3",
+            "audio_base64": "YXVkaW8=",
+            "mime_type": "audio/wav",
+            "source": "audio",
+            "live": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["missing_config"] == ["NVIDIA_API_KEY"]
