@@ -128,6 +128,7 @@ odoo_create_draft_invoice
 odoo_create_deal_artifacts
 delivery_create_tasks
 notify_stakeholder
+meeting_audio_process
 ```
 
 Live side effects require both host opt-in and request opt-in:
@@ -150,13 +151,22 @@ For a judge-facing Odoo live demo, prefer the atomic sequence:
 
 `odoo_create_deal_artifacts` remains a one-shot compatibility fallback.
 
-Start the second Telegram bot for business-card intake and CRM lookup:
+Start the second Telegram bot for business-card intake, CRM lookup, and meeting audio:
 
 ```bash
 make telegram-ops
 ```
 
 Configure it with `AGENT_TELEGRAM_BOT_TOKEN`, `AGENT_TELEGRAM_CHAT_ID`, and `AGENT_TELEGRAM_ALLOWED_USER_IDS`. Business-card capture also needs `NIM_VISION_MODEL`.
+
+Meeting audio supports Telegram voice notes and uploaded `mp3`/`wav`/`ogg` audio. Telegram voice notes are usually `ogg/opus`, so the host needs `ffmpeg` available to convert them to `wav` before transcription. The default transcription model is `NIM_AUDIO_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`; meeting minutes use `NIM_MODEL`, normally `nvidia/nemotron-3-super-120b-a12b`.
+
+Transcription quality should be checked before any demo claim. Add short synthetic or consented fixtures under `agent_app/tests/fixtures/audio/`, then run the opt-in live eval:
+
+```bash
+cd agent_app
+NVIDIA_AUDIO_LIVE_TEST=1 NVIDIA_API_KEY=... uv run pytest tests/live/test_meeting_audio_live.py -q -rs
+```
 
 ## Project Layout
 

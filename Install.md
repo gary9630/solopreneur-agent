@@ -22,6 +22,7 @@ cd /path/to/solopreneur-agent
 - `uv`
 - `git`
 - `curl`
+- `ffmpeg`（Telegram voice note 轉 `wav` 需要）
 - NemoClaw CLI (`nemoclaw`)
 
 快速檢查：
@@ -29,6 +30,7 @@ cd /path/to/solopreneur-agent
 ```bash
 docker --version
 uv --version
+ffmpeg -version
 nemoclaw --version
 ```
 
@@ -423,6 +425,21 @@ Business card flow：
 - 傳一張名片照片給 bot。
 - 預期 bot 會抽取聯絡人資訊。
 - live mode 下會建立或更新 Odoo contact / CRM lead。
+
+Meeting audio flow：
+
+- 傳 Telegram voice note，或上傳 `mp3` / `wav` / `ogg` 音訊。
+- 預期 bot 先傳逐字稿，再傳 meeting minutes。
+- Telegram voice note 通常是 `ogg/opus`，主機需要 `ffmpeg` 轉成 `wav`。
+- 逐字稿預設使用 `NIM_AUDIO_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`。
+- meeting minutes 使用 `NIM_MODEL`，通常是 `nvidia/nemotron-3-super-120b-a12b`。
+
+逐字稿準確度不要只靠肉眼判斷。加入短的 synthetic 或已同意錄音 fixtures 後，用 opt-in live eval：
+
+```bash
+cd agent_app
+NVIDIA_AUDIO_LIVE_TEST=1 NVIDIA_API_KEY=... uv run pytest tests/live/test_meeting_audio_live.py -q -rs
+```
 
 ## 13. Common Issues
 
