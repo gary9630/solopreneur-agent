@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from deal_agent.config import Settings
-from deal_agent.tool_models import BusinessCardContact, ToolWorkflowRequest
+from deal_agent.tool_models import BusinessCardContact, MeetingAudioToolRequest, ToolWorkflowRequest
 
 
 def test_tool_workflow_request_strips_fields_and_defaults_to_dry_run():
@@ -37,6 +37,32 @@ def test_business_card_contact_normalizes_optional_fields():
     assert contact.company == "Analytical Engines LLC"
     assert contact.email == "ada@example.com"
     assert contact.confidence == 0.91
+
+
+def test_meeting_audio_request_strips_fields_and_defaults_to_dry_run():
+    request = MeetingAudioToolRequest(
+        run_id="  audio_1  ",
+        audio_base64="  Ynl0ZXM=  ",
+        mime_type="  audio/ogg  ",
+        filename="  voice.ogg  ",
+        source="voice",
+    )
+
+    assert request.run_id == "audio_1"
+    assert request.audio_base64 == "Ynl0ZXM="
+    assert request.mime_type == "audio/ogg"
+    assert request.filename == "voice.ogg"
+    assert request.source == "voice"
+    assert request.live is False
+
+
+def test_meeting_audio_settings_defaults_are_safe():
+    settings = Settings(_env_file=None)
+
+    assert settings.nim_audio_model == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    assert settings.nim_audio_inline_max_bytes == 180000
+    assert settings.meeting_audio_min_confidence == 0.45
+    assert settings.meeting_audio_max_telegram_chars == 3900
 
 
 def test_agent_telegram_allowed_user_ids_parse_csv(monkeypatch):

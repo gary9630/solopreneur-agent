@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     nim_base_url: str = "https://integrate.api.nvidia.com/v1"
     nim_model: str = "nvidia/nemotron-3-super-120b-a12b"
     nim_vision_model: str | None = None
+    nim_audio_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nim_audio_inline_max_bytes: int = 180000
+    meeting_audio_min_confidence: float = 0.45
+    meeting_audio_max_telegram_chars: int = 3900
     odoo_api_key: str | None = None
     odoo_database: str | None = None
     linear_api_key: str | None = None

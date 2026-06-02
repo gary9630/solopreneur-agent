@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
 
@@ -40,6 +40,32 @@ class BusinessCardToolRequest(StrictModel):
     image_base64: NonBlankStr
     mime_type: NonBlankStr
     live: bool = False
+
+
+class MeetingAudioToolRequest(StrictModel):
+    run_id: NonBlankStr
+    audio_base64: NonBlankStr
+    mime_type: NonBlankStr
+    filename: CleanStr | None = None
+    source: Literal["voice", "audio", "document"] = "audio"
+    language_hint: CleanStr | None = None
+    live: bool = False
+
+
+class MeetingTranscript(StrictModel):
+    language: CleanStr = "unknown"
+    transcript: NonBlankStr
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MeetingMinutes(StrictModel):
+    language: CleanStr = "unknown"
+    summary: NonBlankStr
+    decisions: list[str] = Field(default_factory=list)
+    action_items: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    follow_up: list[str] = Field(default_factory=list)
 
 
 class CrmLookupRequest(StrictModel):
